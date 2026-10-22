@@ -12,7 +12,7 @@ With conda (recommended):
 
 ```bash
 conda env create -f environment.yml
-conda activate ml-project
+conda activate flegrei-seismicity
 ```
 
 Without conda, use Python 3.14 and `pip install -r requirements.txt`. On macOS, LightGBM also

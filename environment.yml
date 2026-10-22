@@ -1,7 +1,7 @@
 # Conda environment for this project.
 # Create with:  conda env create -f environment.yml
 # Python packages and their versions live in requirements.txt.
-name: ml-project
+name: flegrei-seismicity
 channels:
   - conda-forge
 dependencies:
