@@ -1,0 +1,17 @@
+# Makes the code in src/ importable from scripts/ and notebooks/ (`from src.gps import ...`).
+# Install once, in editable mode, so code changes take effect without reinstalling:
+#     pip install -e .
+# Dependencies and their pinned versions live in requirements.txt.
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flegrei-seismicity"
+version = "0.1.0"
+description = "Can GPS ground uplift at Campi Flegrei forecast earthquake rates?"
+requires-python = ">=3.14"
+
+[tool.setuptools]
+packages = ["src"]

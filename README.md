@@ -15,7 +15,8 @@ conda env create -f environment.yml
 conda activate flegrei-seismicity
 ```
 
-Without conda, use Python 3.14 and `pip install -r requirements.txt`. On macOS, LightGBM also
+Without conda, use Python 3.14, then `pip install -r requirements.txt` and `pip install -e .`
+(the second command makes the project's own code in `src/` importable). On macOS, LightGBM also
 needs OpenMP (`brew install libomp`).
 
 ## Data

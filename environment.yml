@@ -10,3 +10,4 @@ dependencies:
   - pip
   - pip:
       - -r requirements.txt
+      - -e .         # this project's src/ package (see pyproject.toml)
