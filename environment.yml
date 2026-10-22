@@ -1,0 +1,12 @@
+# Conda environment for this project.
+# Create with:  conda env create -f environment.yml
+# Python packages and their versions live in requirements.txt.
+name: ml-project
+channels:
+  - conda-forge
+dependencies:
+  - python=3.14
+  - llvm-openmp      # C library LightGBM needs for multi-threading
+  - pip
+  - pip:
+      - -r requirements.txt

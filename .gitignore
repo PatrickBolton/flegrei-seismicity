@@ -1,0 +1,24 @@
+# Raw downloads: large, and re-creatable with scripts/ (see README for sources)
+data/raw/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model artefacts and large outputs
+*.pkl
+*.joblib
+models/
+
+# Secrets
+.env
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
