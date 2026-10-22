@@ -1,6 +1,10 @@
 # Raw downloads: large, and re-creatable with scripts/ (see README for sources)
 data/raw/
 
+# Processed tables: re-created by scripts/process_data.py
+data/processed/*
+!data/processed/.gitkeep
+
 # Python
 .venv/
 __pycache__/
