@@ -56,6 +56,45 @@ def b_value_mle(md: pd.Series, mc: float, width: float = BIN_WIDTH) -> tuple[flo
     return float(b), float(b_sigma), n
 
 
+def _windows(n_events: int, size: int, step: int):
+    """Start and stop positions of windows of `size` consecutive events, moving by `step`."""
+    for start in range(0, n_events - size + 1, step):
+        yield start, start + size
+
+
+def mc_over_time(events: pd.DataFrame, size: int = 1000, step: int = 250) -> pd.DataFrame:
+    """MAXC Mc in moving windows of `size` events (with a magnitude), in time order.
+
+    `events` needs `time` and `md` columns. Each row describes one window: its first, middle
+    (median) and last event time, and its Mc. Windows overlap, so neighbouring rows aren't
+    independent.
+    """
+    ev = events.dropna(subset=["md"]).sort_values("time", ignore_index=True)
+    rows = []
+    for start, stop in _windows(len(ev), size, step):
+        w = ev.iloc[start:stop]
+        rows.append({"start": w["time"].iloc[0], "mid": w["time"].median(),
+                     "end": w["time"].iloc[-1], "mc_maxc": mc_maxc(w["md"])})
+    return pd.DataFrame(rows)
+
+
+def b_value_over_time(events: pd.DataFrame, mc: float = MC_SEARCH_MIN, size: int = 200,
+                      step: int = 50) -> pd.DataFrame:
+    """b-value in moving windows of `size` events with M >= mc, in time order.
+
+    Same layout as mc_over_time, with columns b and b_sigma instead of mc_maxc.
+    """
+    ev = events.dropna(subset=["md"])
+    ev = ev[bin_magnitudes(ev["md"]) >= mc - 1e-9].sort_values("time", ignore_index=True)
+    rows = []
+    for start, stop in _windows(len(ev), size, step):
+        w = ev.iloc[start:stop]
+        b, b_sigma, _ = b_value_mle(w["md"], mc)
+        rows.append({"start": w["time"].iloc[0], "mid": w["time"].median(),
+                     "end": w["time"].iloc[-1], "b": b, "b_sigma": b_sigma})
+    return pd.DataFrame(rows)
+
+
 def cumulative_counts(md: pd.Series) -> pd.Series:
     """N(>=M): the number of events with magnitude at least M, for each distinct magnitude M.
 
