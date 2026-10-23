@@ -6,6 +6,7 @@ Run scripts/download_data.py first. Then, from the repository root:
 
 from pathlib import Path
 
+from src.catalogue import load_catalogue
 from src.gps import load_all_stations
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,22 @@ def process_gps() -> None:
     )
 
 
+def process_catalogue() -> None:
+    df = load_catalogue(RAW_DIR / "catalogue")
+
+    # Every event must have an ID and a time; location and magnitude may be missing.
+    assert df["event_id"].notna().all(), "missing event IDs"
+    assert df["time"].notna().all(), "unparsed times"
+
+    path = PROCESSED_DIR / "catalogue.parquet"
+    df.to_parquet(path, index=False)
+    print(
+        f"Catalogue: {len(df):,} events, "
+        f"{df['time'].min():%Y-%m-%d} to {df['time'].max():%Y-%m-%d} -> {path.relative_to(ROOT)}"
+    )
+
+
 if __name__ == "__main__":
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     process_gps()
+    process_catalogue()
