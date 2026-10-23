@@ -44,6 +44,10 @@ def process_catalogue() -> None:
     # As of Oct 2026 every event is an earthquake. If other types (e.g. explosions) appear
     # in a new download, look at them before deciding to drop them.
     assert (df["type"] == "earthquake").all(), f"new event types: {set(df['type'])}"
+    # Review status: final bulletin, revised, or automatic. Keep all three; filter when
+    # building targets. A new value would need a decision before it is used.
+    levels = {"Bollettino", "Rivisto", "Automatico"}
+    assert df["level"].isin(levels).all(), f"new levels: {set(df['level']) - levels}"
     # flag_missing relies on these columns being missing together.
     loc = df[["latitude", "longitude", "depth_km"]].isna()
     assert loc.all(axis=1).eq(loc.any(axis=1)).all(), "location partly missing"
