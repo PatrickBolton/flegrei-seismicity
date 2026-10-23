@@ -63,6 +63,19 @@ def drop_located_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(is_copy[is_copy].index).reset_index(drop=True)
 
 
+def flag_missing(df: pd.DataFrame) -> pd.DataFrame:
+    """Add `has_location` and `has_magnitude` flags.
+
+    Latitude, longitude and depth are always missing together, as are md and md_error,
+    so one column decides each flag. Unlocated events still count towards event rates
+    but can't be used in maps or spatial features.
+    """
+    return df.assign(
+        has_location=df["latitude"].notna(),
+        has_magnitude=df["md"].notna(),
+    )
+
+
 def flag_shared_time(df: pd.DataFrame) -> pd.DataFrame:
     """Add `shared_time`: True when another event has exactly the same time.
 

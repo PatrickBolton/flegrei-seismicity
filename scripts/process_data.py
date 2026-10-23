@@ -6,7 +6,12 @@ Run scripts/download_data.py first. Then, from the repository root:
 
 from pathlib import Path
 
-from src.catalogue import drop_located_duplicates, flag_shared_time, load_catalogue
+from src.catalogue import (
+    drop_located_duplicates,
+    flag_missing,
+    flag_shared_time,
+    load_catalogue,
+)
 from src.gps import load_all_stations
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +36,7 @@ def process_gps() -> None:
 
 def process_catalogue() -> None:
     raw = load_catalogue(RAW_DIR / "catalogue")
-    df = flag_shared_time(drop_located_duplicates(raw))
+    df = flag_missing(flag_shared_time(drop_located_duplicates(raw)))
 
     # Every event must have an ID and a time; location and magnitude may be missing.
     assert df["event_id"].notna().all(), "missing event IDs"
@@ -39,6 +44,11 @@ def process_catalogue() -> None:
     # As of Oct 2026 every event is an earthquake. If other types (e.g. explosions) appear
     # in a new download, look at them before deciding to drop them.
     assert (df["type"] == "earthquake").all(), f"new event types: {set(df['type'])}"
+    # flag_missing relies on these columns being missing together.
+    loc = df[["latitude", "longitude", "depth_km"]].isna()
+    assert loc.all(axis=1).eq(loc.any(axis=1)).all(), "location partly missing"
+    mag = df[["md", "md_error"]].isna()
+    assert mag.all(axis=1).eq(mag.any(axis=1)).all(), "magnitude partly missing"
     # One EventID (1057) is reused for two different events, so the ID alone is not unique.
     assert not df.duplicated(["time", "event_id"]).any(), "duplicate (time, event_id)"
 
