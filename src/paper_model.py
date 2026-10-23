@@ -14,9 +14,10 @@ exponential N = N0 * exp(b * delta) (Eq. 1: N0 = 35.25, b = 0.035). They leave o
 
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 from scipy.optimize import curve_fit
 
-from src.series import station_daily
+from src.series import on_weekday, station_daily, trailing_rate
 
 PAPER_PARAMS = {"k1": 0.76, "k2": 0.2, "alpha": -0.8, "beta": 0.15, "N0": 35.25, "b": 0.035}
 SKIP_FIRST = 30  # events left out at the start, as in the paper
@@ -84,3 +85,87 @@ def fit_exponential(table: pd.DataFrame, skip_first: int = SKIP_FIRST) -> dict:
     (n0, b), _ = curve_fit(lambda d, n0, b: n0 * np.exp(b * d), part["delta"], part["N"],
                            p0=[35.0, 0.035])
     return {"N0": n0, "b": b, "events": len(part)}
+
+
+# ---- The same model as a weekly forecast ----
+#
+# Written in time, Eq. 4 gives the rate: dN/dt = beta * delta**alpha * N * ln(N) * d(delta)/dt.
+# For one week, the expected number of events is therefore
+#
+#     mu = beta * delta**alpha * N * ln(N) * (uplift during the week)
+#
+# with delta and N at the start of the week. Taking logs, log(mu) = log(beta) + alpha*log(delta)
+# + log(N ln N * uplift): a Poisson regression on log(delta) with offset log(N ln N * uplift),
+# which fits beta and alpha directly to weekly counts by maximum likelihood.
+
+RATE_WINDOW_DAYS = 28  # window of the uplift rate used for the weekly uplift
+MIN_DELTA_CM = 5.0  # weeks with less uplift than this are left out of fits (delta**alpha blows up)
+
+
+def add_uplift_features(weekly: pd.DataFrame, gps: pd.DataFrame, station: str = "RITE",
+                        zero: str = "2005-01") -> pd.DataFrame:
+    """Add to the weekly table what the rate model needs, all in cm:
+
+    - N_before: events counted (column "count") in all earlier weeks;
+    - delta_start: uplift at the start of the week (7-day mean up to the Sunday before);
+    - uplift_prev: uplift per week over the 28 days up to the Sunday before (known when the
+      forecast is made);
+    - uplift_oracle: uplift per week over the 28 days up to the week's own Sunday. This uses the
+      week being forecast, so a forecast with it is an upper bound, not a real forecast.
+    """
+    up = station_daily(gps, station)
+    cm = (up - up[zero].mean()) * 100
+    rate_per_week = trailing_rate(cm, RATE_WINDOW_DAYS) * 7 / 365.25
+    level = cm.rolling(7, min_periods=3).mean()  # trailing: no future days
+
+    out = weekly.copy()
+    out["N_before"] = out["count"].cumsum().shift(1, fill_value=0)
+    out["delta_start"] = on_weekday(level, out.index, -1)
+    out["uplift_prev"] = on_weekday(rate_per_week, out.index, -1)
+    out["uplift_oracle"] = on_weekday(rate_per_week, out.index, 6)
+    return out
+
+
+def rate_offset(n_before, uplift):
+    """log(N ln N * uplift); -inf where the model can't be applied (N <= 1 or no uplift)."""
+    n = np.asarray(n_before, dtype=float)
+    u = np.asarray(uplift, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where((n > 1) & (u > 0), np.log(n * np.log(np.where(n > 1, n, 2)) * u), -np.inf)
+
+
+def fit_rate_model(history: pd.DataFrame) -> dict:
+    """Fit log(beta) and alpha by Poisson regression on past weeks.
+
+    Past weeks are fully observed, so their actual uplift (uplift_oracle) is used.
+    """
+    offset = rate_offset(history["N_before"], history["uplift_oracle"])
+    usable = np.isfinite(offset) & (history["delta_start"] > MIN_DELTA_CM).to_numpy()
+    x = sm.add_constant(np.log(history.loc[usable, "delta_start"].to_numpy()))
+    fit = sm.GLM(history.loc[usable, "count"].to_numpy(dtype=float), x,
+                 family=sm.families.Poisson(), offset=offset[usable]).fit()
+    log_beta, alpha = fit.params
+    return {"beta": float(np.exp(log_beta)), "alpha": float(alpha), "weeks": int(usable.sum())}
+
+
+def rate_expected(current: pd.Series, beta: float, alpha: float, uplift_column: str) -> float:
+    """Expected events in the week: beta * delta**alpha * N ln N * uplift (0 if no uplift)."""
+    offset = rate_offset([current["N_before"]], [current[uplift_column]])[0]
+    if not np.isfinite(offset) or current["delta_start"] <= 0:
+        return 0.0
+    return float(beta * current["delta_start"] ** alpha * np.exp(offset))
+
+
+def make_rate_forecaster(uplift_column: str = "uplift_prev", params: dict | None = None):
+    """Weekly forecaster from the rate form of the paper's model.
+
+    With `params` (beta, alpha) fixed, e.g. PAPER_PARAMS; otherwise refitted on the history
+    before every test week. uplift_column "uplift_prev" is a real forecast (the last 28 days'
+    uplift rate carried forward); "uplift_oracle" uses the week's actual uplift (upper bound).
+    """
+    def rate_model(history: pd.DataFrame, current: pd.Series) -> float:
+        p = params if params is not None else fit_rate_model(history)
+        return rate_expected(current, p["beta"], p["alpha"], uplift_column)
+    source = "paper" if params is not None else "refit"
+    rate_model.__name__ = f"rate_{source}_{uplift_column.removeprefix('uplift_')}"
+    return rate_model
