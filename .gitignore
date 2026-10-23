@@ -1,6 +1,9 @@
 # Raw downloads: large, and re-creatable with scripts/ (see README for sources)
 data/raw/
 
+# Papers (PDFs): usually copyrighted, so kept local, never committed
+papers/
+
 # Processed tables: re-created by scripts/process_data.py
 data/processed/*
 !data/processed/.gitkeep
