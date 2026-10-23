@@ -51,9 +51,49 @@ def b_value_mle(md: pd.Series, mc: float, width: float = BIN_WIDTH) -> tuple[flo
     m = bin_magnitudes(md.dropna(), width)
     m = m[m >= mc - 1e-9]
     n = len(m)
+    if n < 2:
+        return np.nan, np.nan, n
     b = np.log10(np.e) / (m.mean() - (mc - width / 2))
     b_sigma = 2.3 * b**2 * np.sqrt(((m - m.mean()) ** 2).sum() / (n * (n - 1)))
     return float(b), float(b_sigma), n
+
+
+def b_stability(md: pd.Series, min_mag: float = MC_SEARCH_MIN, max_mag: float = 1.5,
+                width: float = BIN_WIDTH, span: float = 0.5) -> pd.DataFrame:
+    """The table behind mc_mbs: for each trial Mc, b, its uncertainty, and b averaged above.
+
+    b_ave is the mean of b at Mc, Mc + width, ..., Mc + span (Woessner & Wiemer 2005).
+    """
+    rows = []
+    for mc in np.round(np.arange(min_mag, max_mag + width / 2, width), 6):
+        b, b_sigma, n = b_value_mle(md, mc, width)
+        rows.append({"mc": mc, "b": b, "b_sigma": b_sigma, "n": n})
+    table = pd.DataFrame(rows).set_index("mc")
+    k = int(round(span / width)) + 1  # number of trial Mc values averaged
+    table["b_ave"] = table["b"][::-1].rolling(k).mean()[::-1]
+    return table
+
+
+def mc_mbs(md: pd.Series, min_mag: float = MC_SEARCH_MIN, width: float = BIN_WIDTH,
+           span: float = 0.5, min_events: int = 50) -> float:
+    """Mc by b-value stability (Cao & Gao 2002; Woessner & Wiemer 2005).
+
+    Above the true Mc, b no longer changes when Mc is raised. Mc is the lowest trial value
+    where |b_ave - b| <= b_sigma. Returns NaN if no trial value with at least `min_events`
+    events passes. As with mc_maxc, a result equal to `min_mag` only means Mc <= min_mag.
+    """
+    table = b_stability(md, min_mag, min_mag + 1.5, width, span).dropna()
+    table = table[table["n"] >= min_events]
+    stable = table[(table["b_ave"] - table["b"]).abs() <= table["b_sigma"]]
+    return float(stable.index[0]) if len(stable) else np.nan
+
+
+def bootstrap(md: pd.Series, statistic, n_boot: int = 500, seed: int = 42) -> np.ndarray:
+    """Apply `statistic` to `n_boot` resamples of the magnitudes (drawn with replacement)."""
+    rng = np.random.default_rng(seed)
+    values = md.dropna().to_numpy()
+    return np.array([statistic(pd.Series(rng.choice(values, size=len(values))))
+                     for _ in range(n_boot)])
 
 
 def _windows(n_events: int, size: int, step: int):
