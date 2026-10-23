@@ -16,6 +16,11 @@ BIN_WIDTH = 0.1
 # Only search for Mc at or above this magnitude.
 MC_SEARCH_MIN = 0.5
 
+# Chosen in notebooks/01_completeness.ipynb: Mc is about 0.6 before 2017 and 0.5 after,
+# so the main analysis uses 0.6 for all years. 0.5 is the cut used by arXiv 2503.20129.
+MC_MAIN = 0.6
+MC_PAPER = 0.5
+
 
 def bin_magnitudes(md: pd.Series, width: float = BIN_WIDTH) -> pd.Series:
     """Round magnitudes to the nearest bin centre (default 0.1), so all years share one grid."""
