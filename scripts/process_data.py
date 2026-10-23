@@ -36,6 +36,9 @@ def process_catalogue() -> None:
     # Every event must have an ID and a time; location and magnitude may be missing.
     assert df["event_id"].notna().all(), "missing event IDs"
     assert df["time"].notna().all(), "unparsed times"
+    # As of Oct 2026 every event is an earthquake. If other types (e.g. explosions) appear
+    # in a new download, look at them before deciding to drop them.
+    assert (df["type"] == "earthquake").all(), f"new event types: {set(df['type'])}"
     # One EventID (1057) is reused for two different events, so the ID alone is not unique.
     assert not df.duplicated(["time", "event_id"]).any(), "duplicate (time, event_id)"
 
