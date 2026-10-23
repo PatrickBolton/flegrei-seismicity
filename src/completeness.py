@@ -31,6 +31,31 @@ def frequency_magnitude(md: pd.Series, width: float = BIN_WIDTH) -> pd.Series:
     return counts.reindex(all_bins, fill_value=0).rename_axis("md_bin").rename("count")
 
 
+def mc_maxc(md: pd.Series, min_mag: float = MC_SEARCH_MIN, width: float = BIN_WIDTH) -> float:
+    """Mc by maximum curvature: the most common magnitude bin at or above `min_mag`.
+
+    If the result equals `min_mag`, the peak may lie lower, so it only says Mc <= min_mag.
+    Woessner & Wiemer (2005) add +0.2 because this method tends to underestimate Mc;
+    callers apply that themselves, and it isn't meaningful when the result is `min_mag`.
+    """
+    counts = frequency_magnitude(md, width)
+    return float(counts[counts.index >= min_mag - 1e-9].idxmax())
+
+
+def b_value_mle(md: pd.Series, mc: float, width: float = BIN_WIDTH) -> tuple[float, float, int]:
+    """Gutenberg-Richter b-value of events with M >= mc, by maximum likelihood.
+
+    Aki (1965), with Utsu's correction for binned magnitudes: the lower edge is mc - width/2.
+    The uncertainty is from Shi & Bolt (1982). Returns (b, b_sigma, number of events used).
+    """
+    m = bin_magnitudes(md.dropna(), width)
+    m = m[m >= mc - 1e-9]
+    n = len(m)
+    b = np.log10(np.e) / (m.mean() - (mc - width / 2))
+    b_sigma = 2.3 * b**2 * np.sqrt(((m - m.mean()) ** 2).sum() / (n * (n - 1)))
+    return float(b), float(b_sigma), n
+
+
 def cumulative_counts(md: pd.Series) -> pd.Series:
     """N(>=M): the number of events with magnitude at least M, for each distinct magnitude M.
 
