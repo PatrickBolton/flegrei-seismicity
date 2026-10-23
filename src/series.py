@@ -56,6 +56,18 @@ def station_daily(gps: pd.DataFrame, station: str, component: str = "up") -> pd.
     return s.reindex(grid).rename_axis("date").rename(station)
 
 
+def on_weekday(daily: pd.Series, weeks: pd.DatetimeIndex, offset_days: int = 6) -> pd.Series:
+    """Sample a daily series once per week: the value on Monday + `offset_days` of each week.
+
+    The result is indexed by the weeks' Mondays, like event_counts(..., "W"). offset_days=6
+    (Sunday) uses data up to the end of the week, so it can describe the week just finished
+    when forecasting the next one; offset_days=3 (Thursday) is the middle of the week.
+    """
+    values = daily.reindex(weeks + pd.Timedelta(days=offset_days))
+    values.index = weeks
+    return values
+
+
 def trailing_rate(daily: pd.Series, window_days: int = 90, min_fraction: float = 0.5) -> pd.Series:
     """Rate of change per year: the least-squares slope over the `window_days` up to each day.
 
