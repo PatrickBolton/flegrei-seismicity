@@ -4,10 +4,12 @@ Fetches:
 - the INGV-OV GOSSIP earthquake catalogue for Campi Flegrei
   (doi:10.13127/gossip), one static CSV per year;
 - GPS time series of 21 stations (doi:10.5281/zenodo.22259337);
-- GPS vertical time series of station RITE (doi:10.5281/zenodo.17132077).
+- GPS vertical time series of station RITE (doi:10.5281/zenodo.17132077);
+- map features (coastline, lakes, place names) from OpenStreetMap, for plots.
 
-All data is CC BY 4.0. Each folder gets a SOURCES.json recording where every
-file came from and when, since data/raw/ is not committed to git.
+The INGV and Zenodo data are CC BY 4.0; OpenStreetMap data is ODbL. Each folder
+gets a SOURCES.json recording where every file came from and when, since
+data/raw/ is not committed to git.
 
 Usage (from the repository root):
     python scripts/download_data.py
@@ -27,6 +29,23 @@ RAW_DIR = ROOT / "data" / "raw"
 GOSSIP_URL = "https://terremoti.ov.ingv.it/gossip/flegrei/{year}/events.csv"
 FIRST_YEAR = 2005  # start of the period studied in arXiv 2503.20129
 EXPECTED_HEADER = "#EventID,Time,Latitude,Longitude,Depth,MD"
+
+# Public Overpass servers are often busy (HTTP 429/502/504), so try a second one too.
+OVERPASS_URLS = ["https://overpass-api.de/api/interpreter",
+                 "https://overpass.kumi.systems/api/interpreter"]
+# Map features for plots: coastline, named lakes, volcanoes and peaks, and places.
+OSM_BBOX = "40.74,14.00,40.92,14.32"  # south, west, north, east
+OSM_QUERY = f"""[out:json][timeout:60];
+(
+  way["natural"="coastline"]({OSM_BBOX});
+  way["natural"="water"]["name"]({OSM_BBOX});
+  relation["natural"="water"]["name"]({OSM_BBOX});
+  node["natural"~"^(peak|volcano)$"]["name"]({OSM_BBOX});
+  node["place"~"^(city|town|suburb|village)$"]({OSM_BBOX});
+);
+out geom;"""
+# Overpass rejects requests without a descriptive User-Agent.
+USER_AGENT = "flegrei-seismicity (research project; github.com/PatrickBolton/flegrei-seismicity)"
 
 ZENODO_API = "https://zenodo.org/api/records/{record_id}"
 ZENODO_RECORDS = {
@@ -109,7 +128,38 @@ def download_zenodo_record(record_id: int, folder: Path) -> None:
     write_sources(folder, sources)
 
 
+def download_osm() -> None:
+    """Download map features from OpenStreetMap (© OpenStreetMap contributors, ODbL)."""
+    folder = RAW_DIR / "osm"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    content, url = None, None
+    for attempt in range(3):
+        for url in OVERPASS_URLS:
+            response = requests.post(url, data={"data": OSM_QUERY},
+                                     headers={"User-Agent": USER_AGENT}, timeout=120)
+            if response.ok:
+                content = response.content
+                break
+            print(f"  {url}: HTTP {response.status_code}, trying again")
+        if content is not None:
+            break
+        time.sleep(30 * (attempt + 1))
+    if content is None:
+        raise RuntimeError("No Overpass server answered; try again later")
+    n_elements = len(json.loads(content)["elements"])  # also checks it is valid JSON
+
+    name = "campi_flegrei_features.json"
+    (folder / name).write_bytes(content)
+    record = source_record(url, content)
+    record["query"] = OSM_QUERY
+    record["licence"] = "ODbL 1.0; credit '© OpenStreetMap contributors'"
+    write_sources(folder, {name: record})
+    print(f"OpenStreetMap: {n_elements} features -> {name}")
+
+
 if __name__ == "__main__":
     download_catalogue()
     for folder_name, record_id in ZENODO_RECORDS.items():
         download_zenodo_record(record_id, RAW_DIR / folder_name)
+    download_osm()
