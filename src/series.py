@@ -44,3 +44,35 @@ def event_counts(events: pd.DataFrame, freq: str = "W", mc: float | None = None,
 
     counts = periods.value_counts().reindex(grid, fill_value=0)
     return counts.rename_axis("period_start").rename("events")
+
+
+def station_daily(gps: pd.DataFrame, station: str, component: str = "up") -> pd.Series:
+    """One station's displacement (metres) on a daily grid from its first to last day.
+
+    Days without a GPS solution are NaN, not filled: how to fill is a feature decision.
+    """
+    s = gps.loc[gps["station"] == station].set_index("date")[component]
+    grid = pd.date_range(s.index.min(), s.index.max(), freq="D")
+    return s.reindex(grid).rename_axis("date").rename(station)
+
+
+def trailing_rate(daily: pd.Series, window_days: int = 90, min_fraction: float = 0.5) -> pd.Series:
+    """Rate of change per year: the least-squares slope over the `window_days` up to each day.
+
+    The window is trailing (it ends on the day it is labelled with), so the rate uses no
+    future data and can later serve as a forecasting feature. Days with fewer than
+    `min_fraction` of the window observed get NaN. Daily GPS noise (~10 mm vertical) is too
+    large to difference day to day; a fitted slope averages it out.
+    """
+    t = pd.Series((daily.index - daily.index[0]).days, index=daily.index, dtype=float)
+    observed = daily.notna()
+    t = t.where(observed)  # use only days with data in every sum
+
+    roll = lambda s: s.rolling(window_days, min_periods=1).sum()  # noqa: E731
+    n = roll(observed.astype(float))
+    st, sy = roll(t), roll(daily)
+    stt, sty = roll(t * t), roll(t * daily)
+
+    slope_per_day = (n * sty - st * sy) / (n * stt - st**2)
+    slope_per_day = slope_per_day.where(n >= min_fraction * window_days)
+    return (slope_per_day * 365.25).rename(daily.name)
