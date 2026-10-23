@@ -9,6 +9,7 @@ Values are displacements from an arbitrary reference position: only changes are 
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 # Note the order: North comes before East in these files.
@@ -29,6 +30,18 @@ def load_station(path: Path) -> pd.DataFrame:
     df.insert(0, "date", mjd_to_datetime(df.pop("mjd")))
     df.insert(1, "station", path.name.split("_")[0])  # "RITE_2000_2025.txt" -> "RITE"
     return df
+
+
+def load_station_coordinates(path: Path) -> pd.DataFrame:
+    """Station latitude and longitude, from data/reference/gps_stations.csv (see its README)."""
+    return pd.read_csv(path).set_index("station")
+
+
+def distance_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance in km between points given in degrees (works on arrays)."""
+    lat1, lon1, lat2, lon2 = (np.radians(v) for v in (lat1, lon1, lat2, lon2))
+    a = np.sin((lat2 - lat1) / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2
+    return 2 * 6371.0 * np.arcsin(np.sqrt(a))
 
 
 def load_all_stations(folder: Path) -> pd.DataFrame:
