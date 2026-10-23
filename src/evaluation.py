@@ -16,6 +16,7 @@ from src.series import event_counts
 M_LARGE = 3.0  # "larger events" for the probability target
 LAMBDA_FLOOR = 0.1  # smallest expected weekly count allowed (see poisson_deviance)
 P_CLIP = 1e-3  # probabilities are kept in [P_CLIP, 1 - P_CLIP] for log-loss
+TARGET_COLUMNS = ["count", "count_large", "has_large"]  # hidden from the week being forecast
 
 
 def weekly_targets(events: pd.DataFrame, start: str, end: str, mc: float = MC_MAIN) -> pd.DataFrame:
@@ -33,15 +34,18 @@ def weekly_targets(events: pd.DataFrame, start: str, end: str, mc: float = MC_MA
     return table
 
 
-def walk_forward(weekly: pd.DataFrame, forecast: Callable[[pd.DataFrame], float],
+def walk_forward(weekly: pd.DataFrame, forecast: Callable[[pd.DataFrame, pd.Series], float],
                  test_start: str, test_end: str) -> pd.Series:
     """Forecast each test week from the weeks before it only.
 
-    `forecast` receives the history (all rows of `weekly` before the test week) and returns
-    one number: an expected count, or a probability, depending on the forecaster.
+    `forecast(history, current)` receives the history (all rows of `weekly` before the test
+    week) and `current`, the test week's own row with the target columns removed: only
+    feature columns that were known when the forecast is made (or, for "oracle" features,
+    deliberately marked as such). It returns one number: an expected count or a probability.
     """
     test_weeks = weekly.loc[test_start:test_end].index
-    values = [forecast(weekly.loc[weekly.index < week]) for week in test_weeks]
+    values = [forecast(weekly.loc[weekly.index < week], weekly.loc[week].drop(TARGET_COLUMNS))
+              for week in test_weeks]
     return pd.Series(values, index=test_weeks, name=getattr(forecast, "__name__", "forecast"))
 
 
