@@ -6,7 +6,7 @@ Run scripts/download_data.py first. Then, from the repository root:
 
 from pathlib import Path
 
-from src.catalogue import load_catalogue
+from src.catalogue import drop_located_duplicates, flag_shared_time, load_catalogue
 from src.gps import load_all_stations
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,16 +30,20 @@ def process_gps() -> None:
 
 
 def process_catalogue() -> None:
-    df = load_catalogue(RAW_DIR / "catalogue")
+    raw = load_catalogue(RAW_DIR / "catalogue")
+    df = flag_shared_time(drop_located_duplicates(raw))
 
     # Every event must have an ID and a time; location and magnitude may be missing.
     assert df["event_id"].notna().all(), "missing event IDs"
     assert df["time"].notna().all(), "unparsed times"
+    # One EventID (1057) is reused for two different events, so the ID alone is not unique.
+    assert not df.duplicated(["time", "event_id"]).any(), "duplicate (time, event_id)"
 
     path = PROCESSED_DIR / "catalogue.parquet"
     df.to_parquet(path, index=False)
     print(
-        f"Catalogue: {len(df):,} events, "
+        f"Catalogue: {len(df):,} events ({len(raw) - len(df)} located duplicates dropped, "
+        f"{df['shared_time'].sum()} flagged shared_time), "
         f"{df['time'].min():%Y-%m-%d} to {df['time'].max():%Y-%m-%d} -> {path.relative_to(ROOT)}"
     )
 

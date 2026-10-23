@@ -45,3 +45,28 @@ def load_catalogue(folder: Path) -> pd.DataFrame:
     for col in ["area", "type", "level"]:
         df[col] = df[col].astype("category")
     return df.sort_values("time", ignore_index=True)
+
+
+def drop_located_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop located events that repeat another event's time, latitude, longitude and depth.
+
+    Such rows are the same event entered twice under different IDs. Keep the copy with the
+    larger magnitude; a missing magnitude counts as the smallest.
+    """
+    key = ["time", "latitude", "longitude", "depth_km"]
+    located = df["latitude"].notna()
+    is_copy = (
+        df[located]
+        .sort_values("md", ascending=False, na_position="last")
+        .duplicated(key)
+    )
+    return df.drop(is_copy[is_copy].index).reset_index(drop=True)
+
+
+def flag_shared_time(df: pd.DataFrame) -> pd.DataFrame:
+    """Add `shared_time`: True when another event has exactly the same time.
+
+    After drop_located_duplicates these are almost all unlocated events (mostly 2008-2009).
+    They may be separate events stamped with a common time, or duplicates: we can't tell.
+    """
+    return df.assign(shared_time=df["time"].duplicated(keep=False))
