@@ -12,7 +12,7 @@ truncated data. Features are grouped so models can be trained with or without GP
 import numpy as np
 import pandas as pd
 
-from src.completeness import MC_MAIN, bin_magnitudes
+from src.completeness import MC_MAIN, b_value_mle, bin_magnitudes
 from src.evaluation import weekly_targets
 from src.paper_model import PAPER_PARAMS, add_uplift_features, rate_expected
 from src.series import event_counts, on_weekday, station_daily, trailing_rate
@@ -32,6 +32,15 @@ GPS_FEATURES = ["delta_rite", "rate_rite_7d", "rate_rite_14d", "rate_rite_28d", 
                 "accel_rite", "rate_near_28d", "rate_far_28d"]
 COMBINED_FEATURES = ["log_N_x_uplift", "log_paper_mu"]
 ALL_FEATURES = SEISMIC_FEATURES + GPS_FEATURES + COMBINED_FEATURES
+# Added for the M >= 3 models (notebook 04, step 4b); kept out of ALL_FEATURES so earlier
+# results don't change:
+# - b_value_26w: Gutenberg-Richter b-value of events with M >= Mc in the last 26 weeks
+#   (lower b = relatively more large events; often read as higher stress);
+# - rate_rite_minus_far_28d: RITE's 28-day rate minus the far stations', removing GPS noise
+#   that is common to the whole network.
+EXTRA_FEATURES = ["b_value_26w", "rate_rite_minus_far_28d"]
+B_VALUE_WEEKS = 26
+B_VALUE_MIN_EVENTS = 30  # fewer events than this in the window: b-value left missing
 
 
 def _seismic(weekly: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
@@ -127,7 +136,23 @@ def build_features(events: pd.DataFrame, gps: pd.DataFrame, start: str, end: str
     paper_mu = [rate_expected(row, PAPER_PARAMS["beta"], PAPER_PARAMS["alpha"], "uplift_prev")
                 for _, row in table.iterrows()]
     table["log_paper_mu"] = np.log1p(paper_mu)
+
+    table["b_value_26w"] = _b_value(table.index, events, mc)
+    table["rate_rite_minus_far_28d"] = table["rate_rite_28d"] - table["rate_far_28d"]
     return table
+
+
+def _b_value(weeks: pd.DatetimeIndex, events: pd.DataFrame, mc: float) -> pd.Series:
+    """b-value of events with M >= mc in the B_VALUE_WEEKS weeks before each week."""
+    above = events[bin_magnitudes(events["md"]) >= mc - 1e-9].sort_values("time")
+    times, md = above["time"].to_numpy(), above["md"].to_numpy()
+    values = []
+    for week in weeks:
+        lo, hi = np.searchsorted(times, [week - pd.Timedelta(weeks=B_VALUE_WEEKS), week])
+        window = md[lo:hi]
+        values.append(b_value_mle(pd.Series(window), mc)[0] if len(window) >= B_VALUE_MIN_EVENTS
+                      else np.nan)
+    return pd.Series(values, index=weeks)
 
 
 def check_no_lookahead(events: pd.DataFrame, gps: pd.DataFrame, start: str, end: str,
@@ -145,6 +170,7 @@ def check_no_lookahead(events: pd.DataFrame, gps: pd.DataFrame, start: str, end:
         cut = pd.Timestamp(week, tz="UTC")
         truncated = build_features(events[events["time"] < cut], gps[gps["date"] < cut],
                                    start, week, scales=scales)
-        diff = (full.loc[cut, ALL_FEATURES] - truncated.loc[cut, ALL_FEATURES]).abs()
+        checked = ALL_FEATURES + EXTRA_FEATURES
+        diff = (full.loc[cut, checked] - truncated.loc[cut, checked]).abs()
         rows[week] = {"max_abs_difference": float(diff.max()), "features_compared": int(diff.notna().sum())}
     return pd.DataFrame(rows).T

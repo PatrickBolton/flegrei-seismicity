@@ -146,36 +146,44 @@ def share_large(history: pd.DataFrame, weeks: int = 156) -> float:
     return float(past["count_large"].sum() / max(past["count"].sum(), 1))
 
 
-def _make_classifier(kind: str):
+def _make_classifier(kind: str, C: float = 0.1):
     if kind == "logistic":
-        # Standardised features and a fairly strong L2 penalty (C = 0.1). Classes are not
+        # Standardised features and an L2 penalty (default C = 0.1, fairly strong). Classes are not
         # re-weighted: that would help catch rare positive weeks but distort the probabilities,
         # and probabilities are what we score.
-        return make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=2000))
+        return make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=2000))
     if kind == "lgbm":
         return LGBMClassifier(n_estimators=100, num_leaves=2, min_child_samples=10,
                               learning_rate=0.05, random_state=SEED, n_jobs=1, verbose=-1)
     raise ValueError(kind)
 
 
-def make_classifier_forecaster(features: list[str], name: str, kind: str = "logistic"):
+def make_classifier_forecaster(features: list[str], name: str, kind: str = "logistic",
+                               window_weeks: int | None = None, C: float = 0.1, fallback=None):
     """Direct forecaster of P(M >= 3 next week): logistic regression or LightGBM.
 
-    Refitted every week on weeks from TRAIN_START; uses the 52-week climatology until the
-    training data has MIN_POSITIVE_WEEKS weeks with an M >= 3. forecaster.active_from records
-    the first test week where the classifier itself was used.
+    Refitted every week, on weeks from TRAIN_START or, with `window_weeks`, on the last
+    `window_weeks` weeks only (a sliding window, for a target whose relation to the features
+    may change). Until the training data has MIN_POSITIVE_WEEKS weeks with an M >= 3 it uses
+    `fallback(history, current)`, by default the 52-week climatology. C is the logistic
+    model's inverse penalty (larger = weaker).
+    forecaster.state["active_from"] is the first test week where the classifier was used.
     """
     state = {"active_from": None}
 
     def classifier(history: pd.DataFrame, current: pd.Series) -> float:
         train = history.loc[TRAIN_START:]
+        if window_weeks is not None:
+            train = train.iloc[-window_weeks:]
         if kind == "logistic":  # the logistic model can't take missing values
             train = train.dropna(subset=features)
         if train["has_large"].sum() < MIN_POSITIVE_WEEKS:
+            if fallback is not None:
+                return float(fallback(history, current))
             return float(history["has_large"].iloc[-CLIMATOLOGY_WEEKS:].mean())
         if state["active_from"] is None:
             state["active_from"] = current.name
-        model = _make_classifier(kind).fit(train[features], train["has_large"].astype(int))
+        model = _make_classifier(kind, C).fit(train[features], train["has_large"].astype(int))
         x = current[features].astype(float).to_frame().T
         if kind == "logistic":
             x = _fill_missing(current, features, train)

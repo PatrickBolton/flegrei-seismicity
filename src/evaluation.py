@@ -112,6 +112,40 @@ def paired_difference(per_week_a: pd.Series, per_week_b: pd.Series, block_weeks:
     return {"mean_difference": float(d.mean()), "ci_low": float(low), "ci_high": float(high)}
 
 
+def brier_decomposition(happened: pd.Series, p: pd.Series, bins: int = 5) -> dict:
+    """Split the Brier score into reliability - resolution + uncertainty (Murphy, 1973).
+
+    Weeks are grouped into `bins` groups of similar forecast (by quantile). Reliability: how
+    far each group's mean forecast is from how often the event happened in it (lower is
+    better: probabilities are right). Resolution: how far each group's frequency is from the
+    overall frequency (higher is better: the forecast separates riskier weeks from safer
+    ones). Uncertainty: base rate * (1 - base rate), the same for every forecaster. With
+    binned forecasts the identity is approximate.
+    """
+    df = pd.DataFrame({"p": np.asarray(p, dtype=float), "y": np.asarray(happened, dtype=float)})
+    df["group"] = pd.qcut(df["p"].rank(method="first"), bins, labels=False)
+    g = df.groupby("group")
+    size, base = g.size(), df["y"].mean()
+    return {"reliability": float((size * (g["p"].mean() - g["y"].mean()) ** 2).sum() / len(df)),
+            "resolution": float((size * (g["y"].mean() - base) ** 2).sum() / len(df)),
+            "uncertainty": float(base * (1 - base))}
+
+
+def ranking_scores(happened: pd.Series, forecasts: dict[str, pd.Series]) -> pd.DataFrame:
+    """ROC AUC and the Brier decomposition for each probability forecaster.
+
+    AUC: the probability that a randomly chosen week with the event got a higher forecast
+    than a randomly chosen week without it (0.5 = no better than random ranking, 1 = perfect).
+    It ignores whether the probabilities themselves are right.
+    """
+    from sklearn.metrics import roc_auc_score
+    return pd.DataFrame({
+        name: {"auc": roc_auc_score(np.asarray(happened, dtype=int), np.asarray(p, dtype=float)),
+               **brier_decomposition(happened, p)}
+        for name, p in forecasts.items()
+    }).T
+
+
 def count_scores(y: pd.Series, forecasts: dict[str, pd.Series]) -> pd.DataFrame:
     """Poisson deviance and mean absolute error for each count forecaster."""
     return pd.DataFrame({
