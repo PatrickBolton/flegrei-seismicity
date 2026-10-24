@@ -1,116 +1,137 @@
 # Campi Flegrei: can ground uplift forecast earthquake rates?
 
-Work in progress. A learning project that asks whether GPS ground deformation at Campi Flegrei
-(uplift, uplift rate and acceleration across 21 stations) can forecast the **rate** of earthquakes
-and the **probability of larger events** (M ≥ 3) in the following days and weeks.
+Campi Flegrei, the volcanic caldera beneath Pozzuoli near Naples, is in a long period of unrest:
+the ground has risen by about 1.6 m since 2005 and earthquakes have become far more frequent.
+This project asks whether **GPS measurements of that uplift can help forecast how many
+earthquakes will happen in the coming week, and how likely a larger one (magnitude 3 or more)
+is.**
 
-This project forecasts rates and probabilities. It does not predict individual earthquakes.
+It forecasts *rates and probabilities*, not individual earthquakes, which cannot be predicted.
+It is a learning project in machine learning, built on public data, with all the code included
+so the results can be checked and extended.
 
-## Results (October 2026)
+**Short answer:** past earthquakes are the best guide to next week's earthquakes. Adding GPS
+uplift, whether from the main station or combined over many stations, made no measurable
+difference to the forecasts.
 
-**Short answer: at weekly resolution, GPS uplift adds no measurable forecasting skill beyond what
-past seismicity already provides.** Uplift explains the long-term growth of seismicity well, but
-that growth is already visible in the earthquake counts themselves.
+## The question, and where it comes from
 
-How this was tested ([`notebooks/03_baselines.ipynb`](notebooks/03_baselines.ipynb),
-[`04_models`](notebooks/04_models.ipynb), [`05_evaluation`](notebooks/05_evaluation.ipynb)):
+A 2025 study ([Godano et al., arXiv 2503.20129](https://arxiv.org/abs/2503.20129)) showed that
+the cumulative number of earthquakes at Campi Flegrei rises smoothly with the uplift at one GPS
+station, and explained this with a simple "epidemic" model in which uplift loads the rock and
+earthquakes trigger further earthquakes. It released no code and did not test forecasts.
 
-- **Targets:** the number of events with M ≥ 0.6 next week, and the probability of at least one
-  M ≥ 3 next week.
-- **Evaluation:** 312 test weeks (2020–2025), each forecast made only from data before that week
-  (walk-forward); results also for the steady period 2024–2025. Scored with proper scores
-  (Poisson deviance and negative binomial log score for counts; Brier score and log-loss for
-  probabilities), with 95% block-bootstrap intervals for every comparison.
-- **Models:** baselines (persistence, rolling means, climatology); the model of the paper we
-  build on (arXiv 2503.20129), reproduced in open code and turned into a weekly forecast;
-  Poisson regression and LightGBM with 19 features from past seismicity and 21 GPS stations.
-- **The key test:** the same model trained with and without GPS features.
+This project:
 
-| | Best result | Effect of adding GPS |
+1. reproduces that model in open code;
+2. builds forecasting models that use the uplift at **many GPS stations** (the main station
+   RITE, and combined rates from 11 others), together with past earthquakes;
+3. tests honestly whether the GPS information improves the forecasts.
+
+## What the data show
+
+The data are the earthquake catalogue of INGV's Vesuvius Observatory (34,535 events since 2005)
+and daily GPS positions from 21 stations (2000–2025), all public (see [Credits](#credits)).
+
+![Map of located earthquakes with magnitude 0.6 or more, and the 21 GPS stations](reports/figures/map_events_stations.png)
+
+- **The earthquakes are tightly clustered** around the Solfatara crater, under Pozzuoli and its
+  gulf, mostly 0.5–3.5 km deep. The ground rises most at station RITE on the Pozzuoli
+  waterfront, and much less with distance.
+- **Small earthquakes are not always recorded,** especially before the seismic network grew in
+  the 2010s. To compare years fairly, the forecasts count only events of magnitude 0.6 or more,
+  which the network has recorded reliably since 2005 (6,161 events).
+- **Both uplift and earthquakes have accelerated.** The uplift rate rose from a few cm a year
+  before 2011 to 20–30 cm a year in pulses since 2023; the number of earthquakes doubled
+  roughly every 1.5 years from 2018, with large swarms on top (600 events in February 2025).
+- **The 2025 study's relationship holds:** since 2012 the cumulative number of earthquakes has
+  grown tenfold for every 73 cm of uplift (below). The same uplift now produces far more
+  earthquakes than ten years ago.
+
+![Cumulative number of earthquakes against the uplift at station RITE](reports/figures/cumulative_count_vs_uplift.png)
+
+- **Week by week, the link is weak and simultaneous.** Bursts of uplift and bursts of
+  earthquakes happen in the same weeks; the uplift doesn't clearly lead. That already hinted
+  that GPS might not help much with forecasting next week.
+
+## Method
+
+- **What is forecast:** each week, (1) the number of earthquakes of magnitude 0.6 or more next
+  week, and (2) the probability of at least one earthquake of magnitude 3 or more.
+- **How forecasts are tested:** each of the 312 weeks from 2020 to 2025 is forecast using only
+  data from before that week, exactly as a forecaster would have had to, and the forecast is
+  then compared with what happened. Results are also given for 2024–2025 alone, when the level
+  of activity changed least.
+- **What is compared:**
+  - simple benchmarks (next week like the last four weeks; the recent frequency of larger
+    events);
+  - the 2025 study's model, turned into a weekly forecast;
+  - statistical and machine-learning models (Poisson regression and gradient-boosted trees,
+    LightGBM) using 19 inputs: recent earthquake counts, and uplift and uplift rates from the GPS
+    stations.
+- **The key test:** each model is trained twice, with and without the GPS inputs. The
+  difference in forecast quality is what GPS adds.
+- **Scoring** uses standard measures of forecast quality that reward forecasts for being both
+  accurate and honest about their uncertainty, with 95% uncertainty intervals for every
+  comparison, so that chance differences aren't mistaken for real ones.
+
+## Results
+
+| Forecast | Best model | Effect of adding GPS |
 |---|---|---|
-| Weekly count | Poisson regression on recent seismicity, with a negative binomial spread: 2.4% better log score than a 4-week rolling mean (significant) | +0.2% (−0.8% to +1.1%): none |
-| P(M ≥ 3 next week) | 4-week mean count converted allowing for clustering: 3–5% better Brier score than climatology | +1.2% (+0.3% to +2.6%): worse |
+| Earthquakes next week | Regression on recent earthquake counts: about 2.4% better than the simple benchmark (a real, statistically significant gain) | +0.2% worse (interval −0.8% to +1.1%): **no effect** |
+| Chance of a magnitude ≥ 3 next week | Recent earthquake rate, allowing for clustering in swarms: 3–5% better than the recent frequency of such weeks | +1.2% worse (interval +0.3% to +2.6%): **slightly harmful** |
 
-![Effect of adding GPS features across setups](reports/figures/gps_effect_sensitivity.png)
+The chart below shows the effect of adding GPS in the main setup and in six variations
+(different training periods, a 4-week forecast instead of 1 week, a lower magnitude
+threshold). Points left of the line would mean GPS helps; the bars show 95% intervals.
 
-The conclusion holds across six alternative setups (training start, training window, a 4-week
-horizon, an M ≥ 2.5 threshold). The tests could detect effects of about 1–3% of the score, the
-size of the real gains made from seismicity, so this isn't a matter of too little data to see
-an effect of that size. The reason: the slow part of the uplift signal duplicates the
-cumulative earthquake count, while its fast part is weak, noisy, and simultaneous with seismic
-bursts rather than leading them.
+![Effect of adding GPS inputs on forecast quality, in seven setups](reports/figures/gps_effect_sensitivity.png)
 
-Other findings along the way:
+**In every setup, GPS adds nothing measurable.** The tests were sensitive enough to detect
+gains of about 1–3%, the size of the real gains the models do make from earthquake data, so
+this is not just a lack of data.
 
-- **The paper's model reproduces** (we get k₁ = 0.752, k₂ = 0.205 against the reported 0.76,
-  0.2), but its parameters depend on fixing an integration constant to zero, and the curve
-  underpredicts events after May 2024 by 15–36%. As a weekly forecast it tracks the yearly
-  level of seismicity but misses swarms.
-- **Uncertainty matters:** Poisson forecasts are far too confident (their 80% intervals held
-  only 45% of weeks); a negative binomial gives honest intervals (86–90%).
-- **Larger events are hard to forecast** beyond their recent base rate: the best forecasts rank
-  risky weeks only modestly better than chance (ROC AUC about 0.63 in 2024–2025).
+**Why:** the slow part of the uplift signal (how far the ground has risen) tells the models the
+same thing as the running total of earthquakes, which they already have. The fast part (how
+quickly it is rising this week) is weak, noisy, and happens at the same time as the earthquake
+bursts rather than before them.
 
-**Limitations:** weekly resolution and horizons of 1–4 weeks only; duration magnitudes (Md),
-which can differ by a few tenths from ML/Mw; a catalogue that is incomplete below about Md 0.6
-before 2017; few weeks with an M ≥ 3 (43 in the test period), so probability results are
-uncertain; and the GPS series end in December 2025. GPS uplift may still matter on longer
-horizons, for other targets, or with better deformation data (for example InSAR).
+Other findings:
 
-## Exploratory findings
+- **The 2025 study's model can be reproduced** (we obtain the same parameters, 0.75 and 0.21,
+  against the published 0.76 and 0.2), but its parameters depend on an assumption the data
+  can't check, and it underestimates the earthquakes after May 2024. As a weekly forecast it
+  gets the overall level right but misses swarms.
+- **Honest uncertainty matters.** Simple forecasts badly understate how variable the weekly
+  numbers are (their "80% ranges" contained the true count only 45% of the time); allowing for
+  swarms fixes this (86–90%).
+- **Larger earthquakes are hard to forecast** beyond how often they have happened recently: the
+  best forecasts pick out the riskier weeks only modestly better than chance.
 
-These are the first observations from cleaning and exploring the data (catalogue downloaded 22
-Oct 2026). Details, code and caveats are in
-[`notebooks/01_completeness.ipynb`](notebooks/01_completeness.ipynb) and
-[`notebooks/02_explore.ipynb`](notebooks/02_explore.ipynb).
+**Limitations:** weekly forecasts up to four weeks ahead only; the catalogue's magnitudes are
+duration magnitudes, which can differ by a few tenths from other magnitude scales; only 43 test
+weeks contained an earthquake of magnitude 3 or more, so those results are uncertain; and the
+GPS data end in December 2025. Uplift may still matter for longer horizons (months to years),
+for other questions such as how large a swarm can grow, or with other deformation data such as
+satellite radar (InSAR).
 
-![Map of located earthquakes with M ≥ 0.6 and the 21 GPS stations](reports/figures/map_events_stations.png)
+## Notebooks
 
-**Where.** The earthquakes are tightly clustered around Solfatara, under the town of Pozzuoli and
-the Gulf of Pozzuoli, mostly 0.5–3.5 km deep. Each year, half the events lie within about 1 km
-of the centre; the outer edge has grown from about 2 km to about 3 km since 2023. The ground rises most
-at station RITE on the Pozzuoli waterfront, about 1 km south-west of the seismic centre, and
-uplift falls off with distance (from over 1 m since 2018 near the centre to 1–2 cm or less at
-stations 9–10 km away).
+The details, code and many more plots are in the notebooks, which are meant to be read in
+order:
 
-**Which events count.** The catalogue (34,535 events since 2005) is only complete above a
-magnitude of about Md 0.6 before 2017 and 0.5 after, because the seismic network grew. We count
-events with M ≥ 0.6 (6,161 events), so that rates are comparable across the years. Small
-magnitudes take only a few discrete values (Md comes from signal duration, apparently measured
-in whole seconds), which limits how low the completeness magnitude can be measured.
+| Notebook | Contents |
+|---|---|
+| [`01_completeness`](notebooks/01_completeness.ipynb) | Which earthquakes are reliably recorded (magnitude of completeness), and the Gutenberg–Richter b-value over time |
+| [`02_explore`](notebooks/02_explore.ipynb) | Exploration: earthquake rate, uplift, their relationship, larger events, map |
+| [`03_baselines`](notebooks/03_baselines.ipynb) | Simple benchmarks, and the 2025 study's model reproduced and turned into a forecast |
+| [`04_models`](notebooks/04_models.ipynb) | Inputs, regression and LightGBM models with and without GPS, larger events, explanations of the models (SHAP) |
+| [`05_evaluation`](notebooks/05_evaluation.ipynb) | Full evaluation: uncertainty of forecasts, detectable effects, and the six variations |
 
-![Monthly earthquake counts, 2005–2026](reports/figures/event_rate_monthly.png)
+## Reproducing the results
 
-**How fast.** Events with M ≥ 0.6 were rare until about 2016 (most months had none or one). Since
-2017–2018 the rate has climbed steadily, from about 7 a month in 2018 to about 180 a month in
-2025, roughly doubling every 1.5 years, with large swarms on top (February 2025: 600 events at
-M ≥ 0.6 in one month). 2026 so far is quieter than 2025.
-
-**Uplift.** RITE has risen about 160 cm since January 2005, almost all after 2011. Since about
-2013 the uplift has grown roughly exponentially (doubling about every 4 years, slowly
-lengthening), and the uplift rate has reached 20–30 cm/year in pulses since 2023.
-
-![Cumulative number of earthquakes against uplift at RITE](reports/figures/cumulative_count_vs_uplift.png)
-
-**Earthquakes against uplift.** As in the paper we build on (arXiv 2503.20129), the cumulative
-number of earthquakes rises smoothly with uplift: since 2012 it grows tenfold for every 73 cm of
-uplift at RITE. Our event set (all events with M ≥ 0.6) gives almost the same curve as the
-paper's (located events with M > 0.5). As a consequence, the same amount of uplift now produces
-far more earthquakes than ten years ago: events per cm of uplift grew about 36-fold from 2014 to
-2025, in step with the cumulative count.
-
-**Week by week.** After removing the long-term trend, pulses of uplift and bursts of seismicity
-happen at the same time, with at most a week's lead for the uplift. The uplift rate measured up
-to the end of a week correlates only weakly with the next week's count (0.17), and not at all
-four weeks ahead. So any forecasting skill from GPS is likely to be modest; the models in the
-next phase will be compared against simple baselines that use past seismicity alone.
-
-**Larger events.** There have been 91 events with M ≥ 3, all since December 2019 and most since
-2023, falling in 51 of 399 weeks. They are more common than a single Gutenberg–Richter law fitted
-to small events predicts, and the Gutenberg–Richter b-value has fallen from about 1.05 to about
-0.8 during 2022–2023.
-
-## Setup
+### Setup
 
 With conda (recommended):
 
@@ -123,7 +144,7 @@ Without conda, use Python 3.14, then `pip install -r requirements.txt` and `pip 
 (the second command makes the project's own code in `src/` importable). On macOS, LightGBM also
 needs OpenMP (`brew install libomp`).
 
-## Data
+### Data
 
 Raw data lives in `data/raw/` and is not committed. To download it (about 10 MB):
 
@@ -156,7 +177,7 @@ hundreds of weekly model fits; `05_evaluation` caches its forecasts in
 `data/processed/forecasts/` (git-ignored). Delete that folder after changing model code, to
 recompute them.
 
-### Credits
+## Credits
 
 The earthquake and GPS data are published under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
@@ -177,3 +198,8 @@ The earthquake and GPS data are published under
   station coordinates, from its Table 1).
 - Map features: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors,
   available under the [Open Database Licence (ODbL)](https://opendatacommons.org/licenses/odbl/).
+
+## Licence
+
+The code is released under the [MIT licence](LICENSE). The data keep their own licences, listed
+above.
