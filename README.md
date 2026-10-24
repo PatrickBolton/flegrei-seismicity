@@ -6,10 +6,61 @@ and the **probability of larger events** (M ≥ 3) in the following days and wee
 
 This project forecasts rates and probabilities. It does not predict individual earthquakes.
 
-## Preliminary results (exploratory, October 2026)
+## Results (October 2026)
 
-No forecasting models yet: these are first observations from cleaning and exploring the data
-(catalogue downloaded 22 Oct 2026). Details, code and caveats are in
+**Short answer: at weekly resolution, GPS uplift adds no measurable forecasting skill beyond what
+past seismicity already provides.** Uplift explains the long-term growth of seismicity well, but
+that growth is already visible in the earthquake counts themselves.
+
+How this was tested ([`notebooks/03_baselines.ipynb`](notebooks/03_baselines.ipynb),
+[`04_models`](notebooks/04_models.ipynb), [`05_evaluation`](notebooks/05_evaluation.ipynb)):
+
+- **Targets:** the number of events with M ≥ 0.6 next week, and the probability of at least one
+  M ≥ 3 next week.
+- **Evaluation:** 312 test weeks (2020–2025), each forecast made only from data before that week
+  (walk-forward); results also for the steady period 2024–2025. Scored with proper scores
+  (Poisson deviance and negative binomial log score for counts; Brier score and log-loss for
+  probabilities), with 95% block-bootstrap intervals for every comparison.
+- **Models:** baselines (persistence, rolling means, climatology); the model of the paper we
+  build on (arXiv 2503.20129), reproduced in open code and turned into a weekly forecast;
+  Poisson regression and LightGBM with 19 features from past seismicity and 21 GPS stations.
+- **The key test:** the same model trained with and without GPS features.
+
+| | Best result | Effect of adding GPS |
+|---|---|---|
+| Weekly count | Poisson regression on recent seismicity, with a negative binomial spread: 2.4% better log score than a 4-week rolling mean (significant) | +0.2% (−0.8% to +1.1%): none |
+| P(M ≥ 3 next week) | 4-week mean count converted allowing for clustering: 3–5% better Brier score than climatology | +1.2% (+0.3% to +2.6%): worse |
+
+![Effect of adding GPS features across setups](reports/figures/gps_effect_sensitivity.png)
+
+The conclusion holds across six alternative setups (training start, training window, a 4-week
+horizon, an M ≥ 2.5 threshold). The tests could detect effects of about 1–3% of the score, the
+size of the real gains made from seismicity, so this isn't a matter of too little data to see
+an effect of that size. The reason: the slow part of the uplift signal duplicates the
+cumulative earthquake count, while its fast part is weak, noisy, and simultaneous with seismic
+bursts rather than leading them.
+
+Other findings along the way:
+
+- **The paper's model reproduces** (we get k₁ = 0.752, k₂ = 0.205 against the reported 0.76,
+  0.2), but its parameters depend on fixing an integration constant to zero, and the curve
+  underpredicts events after May 2024 by 15–36%. As a weekly forecast it tracks the yearly
+  level of seismicity but misses swarms.
+- **Uncertainty matters:** Poisson forecasts are far too confident (their 80% intervals held
+  only 45% of weeks); a negative binomial gives honest intervals (86–90%).
+- **Larger events are hard to forecast** beyond their recent base rate: the best forecasts rank
+  risky weeks only modestly better than chance (ROC AUC about 0.63 in 2024–2025).
+
+**Limitations:** weekly resolution and horizons of 1–4 weeks only; duration magnitudes (Md),
+which can differ by a few tenths from ML/Mw; a catalogue that is incomplete below about Md 0.6
+before 2017; few weeks with an M ≥ 3 (43 in the test period), so probability results are
+uncertain; and the GPS series end in December 2025. GPS uplift may still matter on longer
+horizons, for other targets, or with better deformation data (for example InSAR).
+
+## Exploratory findings
+
+These are the first observations from cleaning and exploring the data (catalogue downloaded 22
+Oct 2026). Details, code and caveats are in
 [`notebooks/01_completeness.ipynb`](notebooks/01_completeness.ipynb) and
 [`notebooks/02_explore.ipynb`](notebooks/02_explore.ipynb).
 
@@ -99,6 +150,11 @@ there). To build the cleaned tables in `data/processed/` used by the notebooks:
 ```bash
 python scripts/process_data.py
 ```
+
+Then run the notebooks in order (`01_completeness` … `05_evaluation`). Notebooks 03–05 run
+hundreds of weekly model fits; `05_evaluation` caches its forecasts in
+`data/processed/forecasts/` (git-ignored). Delete that folder after changing model code, to
+recompute them.
 
 ### Credits
 
