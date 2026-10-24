@@ -85,6 +85,33 @@ def calibration_table(happened: pd.Series, p: pd.Series,
                          "observed_share": groups["y"].mean()}).rename_axis("forecast_bin")
 
 
+def weekly_poisson_deviance(y: pd.Series, mean: pd.Series) -> pd.Series:
+    """Poisson deviance of each week separately (same floor as poisson_deviance)."""
+    yv = np.asarray(y, dtype=float)
+    mu = np.maximum(np.asarray(mean, dtype=float), LAMBDA_FLOOR)
+    y_log = np.where(yv > 0, yv * np.log(np.where(yv > 0, yv, 1) / mu), 0.0)
+    return pd.Series(2 * (y_log - (yv - mu)), index=y.index)
+
+
+def paired_difference(per_week_a: pd.Series, per_week_b: pd.Series, block_weeks: int = 8,
+                      n_boot: int = 2000, seed: int = 0) -> dict:
+    """Mean of (score A - score B) over weeks, with a 95% block-bootstrap interval.
+
+    Both forecasters are scored on the same weeks, so we look at their per-week difference.
+    Neighbouring weeks are correlated (swarms last several weeks), so we resample blocks of
+    `block_weeks` consecutive weeks rather than single weeks. If the interval excludes 0,
+    the difference is unlikely to be luck. Negative means A has the lower (better) score.
+    """
+    d = (per_week_a - per_week_b).to_numpy()
+    n = len(d)
+    rng = np.random.default_rng(seed)
+    starts = rng.integers(0, n - block_weeks + 1, size=(n_boot, int(np.ceil(n / block_weeks))))
+    idx = (starts[:, :, None] + np.arange(block_weeks)).reshape(n_boot, -1)[:, :n]
+    means = d[idx].mean(axis=1)
+    low, high = np.percentile(means, [2.5, 97.5])
+    return {"mean_difference": float(d.mean()), "ci_low": float(low), "ci_high": float(high)}
+
+
 def count_scores(y: pd.Series, forecasts: dict[str, pd.Series]) -> pd.DataFrame:
     """Poisson deviance and mean absolute error for each count forecaster."""
     return pd.DataFrame({
