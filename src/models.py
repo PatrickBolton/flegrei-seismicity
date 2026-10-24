@@ -9,8 +9,8 @@ used for the whole year. Test weeks are never used for tuning.
 
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMRegressor
-from sklearn.linear_model import PoissonRegressor
+from lightgbm import LGBMClassifier, LGBMRegressor
+from sklearn.linear_model import LogisticRegression, PoissonRegressor
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from sklearn.pipeline import make_pipeline
@@ -126,6 +126,64 @@ def make_lgbm_forecaster(features: list[str], name: str, grid: dict = LGBM_GRID)
 def fit_lgbm(train: pd.DataFrame, features: list[str], params: dict) -> LGBMRegressor:
     """A LightGBM model with the given settings, fitted on `train` (for inspection, e.g. SHAP)."""
     return LGBMRegressor(**LGBM_FIXED, **params).fit(train[features], train["count"])
+
+
+# ---- P(at least one M >= 3 next week) ----
+#
+# Weeks with an M >= 3 are rare and recent: the training data has its 1st in December 2019,
+# its 10th only in September 2023. So the direct classifiers (a) start only once the training
+# data holds MIN_POSITIVE_WEEKS such weeks, using the 52-week climatology before that, and
+# (b) use fixed, conservative settings: yearly tuning is impossible when the validation years
+# (2020-2022) contain only a handful of positive weeks.
+
+MIN_POSITIVE_WEEKS = 10
+CLIMATOLOGY_WEEKS = 52
+
+
+def share_large(history: pd.DataFrame, weeks: int = 156) -> float:
+    """Fraction of events (M >= Mc) in the last `weeks` weeks that reached M >= 3."""
+    past = history.iloc[-weeks:]
+    return float(past["count_large"].sum() / max(past["count"].sum(), 1))
+
+
+def _make_classifier(kind: str):
+    if kind == "logistic":
+        # Standardised features and a fairly strong L2 penalty (C = 0.1). Classes are not
+        # re-weighted: that would help catch rare positive weeks but distort the probabilities,
+        # and probabilities are what we score.
+        return make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=2000))
+    if kind == "lgbm":
+        return LGBMClassifier(n_estimators=100, num_leaves=2, min_child_samples=10,
+                              learning_rate=0.05, random_state=SEED, n_jobs=1, verbose=-1)
+    raise ValueError(kind)
+
+
+def make_classifier_forecaster(features: list[str], name: str, kind: str = "logistic"):
+    """Direct forecaster of P(M >= 3 next week): logistic regression or LightGBM.
+
+    Refitted every week on weeks from TRAIN_START; uses the 52-week climatology until the
+    training data has MIN_POSITIVE_WEEKS weeks with an M >= 3. forecaster.active_from records
+    the first test week where the classifier itself was used.
+    """
+    state = {"active_from": None}
+
+    def classifier(history: pd.DataFrame, current: pd.Series) -> float:
+        train = history.loc[TRAIN_START:]
+        if kind == "logistic":  # the logistic model can't take missing values
+            train = train.dropna(subset=features)
+        if train["has_large"].sum() < MIN_POSITIVE_WEEKS:
+            return float(history["has_large"].iloc[-CLIMATOLOGY_WEEKS:].mean())
+        if state["active_from"] is None:
+            state["active_from"] = current.name
+        model = _make_classifier(kind).fit(train[features], train["has_large"].astype(int))
+        x = current[features].astype(float).to_frame().T
+        if kind == "logistic":
+            x = _fill_missing(current, features, train)
+        return float(model.predict_proba(x)[0, 1])
+
+    classifier.__name__ = name
+    classifier.state = state
+    return classifier
 
 
 def tuning_table(search_results: dict, param: str) -> pd.DataFrame:
