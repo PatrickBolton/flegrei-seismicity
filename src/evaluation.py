@@ -188,3 +188,75 @@ def probability_scores(happened: pd.Series, forecasts: dict[str, pd.Series]) -> 
                "mean_p": float(np.mean(p))}
         for name, p in forecasts.items()
     }).T
+
+
+# ---- Full predictive distributions for counts (phase 7) ----
+#
+# A count forecast so far is one number, the expected count mu. The negative binomial (NB)
+# turns it into a whole distribution with variance mu + alpha * mu^2: alpha = 0 is the Poisson
+# distribution, larger alpha means more spread, as swarms produce. alpha is fitted on how
+# much past counts scattered around the model's own past forecasts.
+
+ALPHA_BOUNDS = (1e-4, 20.0)
+
+
+def _nb(mu, alpha):
+    """scipy's negative binomial with mean mu and variance mu + alpha * mu^2."""
+    from scipy.stats import nbinom
+    r = 1.0 / np.asarray(alpha, dtype=float)
+    mu = np.maximum(np.asarray(mu, dtype=float), LAMBDA_FLOOR)
+    return nbinom(r, r / (r + mu))
+
+
+def fit_dispersion(y, mu) -> float:
+    """Maximum-likelihood alpha for counts y around forecasts mu."""
+    from scipy.optimize import minimize_scalar
+    y = np.asarray(y, dtype=float)
+    result = minimize_scalar(lambda log_a: -_nb(mu, np.exp(log_a)).logpmf(y).sum(),
+                             bounds=np.log(ALPHA_BOUNDS), method="bounded")
+    return float(np.exp(result.x))
+
+
+def rolling_dispersion(y: pd.Series, mu: pd.Series, test_start: str, weeks: int = 104) -> pd.Series:
+    """alpha for each week from `test_start`, fitted on the `weeks` weeks before it only."""
+    out = {}
+    for week in y.loc[test_start:].index:
+        past = y.index < week
+        out[week] = fit_dispersion(y[past].iloc[-weeks:], mu[past].iloc[-weeks:])
+    return pd.Series(out, name="alpha")
+
+
+def distribution_scores(y: pd.Series, mu: pd.Series, alpha, seed: int = 0) -> pd.DataFrame:
+    """Per-week scores of NB forecasts (alpha = 0 or tiny for Poisson):
+
+    - log_score: -log P(observed count); lower is better.
+    - rps: ranked probability score, sum over k of (P(count <= k) - [observed <= k])^2: the
+      Brier score summed over all thresholds; lower is better.
+    - pit: where the observed count falls in the forecast distribution (randomised within
+      the count's probability step). For calibrated forecasts it is uniform on [0, 1].
+    - in_80, in_95: whether the count lies in the central 80% / 95% prediction interval.
+    """
+    yv = np.asarray(y, dtype=float)
+    alpha = np.broadcast_to(np.maximum(np.asarray(alpha, dtype=float), ALPHA_BOUNDS[0]), yv.shape)
+    dist = _nb(mu, alpha)
+    rng = np.random.default_rng(seed)
+    upper = int(max(yv.max(), np.max(dist.ppf(0.9999)))) + 1
+    k = np.arange(upper + 1)[:, None]
+    cdf = dist.cdf(k)  # (k, weeks)
+    rps = ((cdf - (yv[None, :] <= k)) ** 2).sum(axis=0)
+    below = np.where(yv > 0, dist.cdf(yv - 1), 0.0)
+    pit = below + rng.uniform(size=len(yv)) * dist.pmf(yv)
+    return pd.DataFrame({
+        "log_score": -dist.logpmf(yv), "rps": rps, "pit": pit,
+        "in_80": (yv >= dist.ppf(0.10)) & (yv <= dist.ppf(0.90)),
+        "in_95": (yv >= dist.ppf(0.025)) & (yv <= dist.ppf(0.975)),
+    }, index=y.index)
+
+
+def nb_probability_at_least_one(mu, share, alpha):
+    """P(at least one larger event) when the count is NB(mu, alpha) and each event is larger
+    with probability `share` independently: the larger events are then NB(mu * share, alpha)
+    (thinning keeps alpha), so P = 1 - (1 + alpha * mu * share)^(-1 / alpha)."""
+    lam = np.maximum(np.asarray(mu, dtype=float), LAMBDA_FLOOR) * np.asarray(share, dtype=float)
+    a = np.maximum(np.asarray(alpha, dtype=float), ALPHA_BOUNDS[0])
+    return 1 - (1 + a * lam) ** (-1 / a)
