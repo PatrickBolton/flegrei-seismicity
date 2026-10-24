@@ -85,10 +85,16 @@ def tune(estimator, param_grid: dict, train: pd.DataFrame, features: list[str],
     default k-fold would mix past and future: never use it for time series.) Each candidate's
     score is its mean Poisson deviance over the folds. refit=False: the forecaster refits
     weekly anyway. With horizon h, a gap of h - 1 weeks separates each fold's training and
-    validation weeks, so no training target overlaps the validation weeks.
+    validation weeks, so no training target overlaps the validation weeks. With a short history
+    (e.g. training from 2018), fewer folds are used, so each still has a year of training.
     """
-    search = GridSearchCV(estimator, param_grid, scoring=POISSON_SCORER, refit=False, n_jobs=-1,
-                          cv=TimeSeriesSplit(n_splits=TUNE_FOLDS, test_size=TUNE_WEEKS, gap=horizon - 1))
+    n_splits = min(TUNE_FOLDS, (len(train) - horizon + 1) // TUNE_WEEKS - 1)
+    if n_splits >= 2:
+        cv = TimeSeriesSplit(n_splits=n_splits, test_size=TUNE_WEEKS, gap=horizon - 1)
+    else:  # TimeSeriesSplit needs 2+ folds: give the single split explicitly
+        n = len(train)
+        cv = [(np.arange(n - TUNE_WEEKS - (horizon - 1)), np.arange(n - TUNE_WEEKS, n))]
+    search = GridSearchCV(estimator, param_grid, scoring=POISSON_SCORER, refit=False, n_jobs=-1, cv=cv)
     return search.fit(train[features], train[target])
 
 

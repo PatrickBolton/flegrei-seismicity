@@ -217,12 +217,18 @@ def fit_dispersion(y, mu) -> float:
     return float(np.exp(result.x))
 
 
-def rolling_dispersion(y: pd.Series, mu: pd.Series, test_start: str, weeks: int = 104) -> pd.Series:
-    """alpha for each week from `test_start`, fitted on the `weeks` weeks before it only."""
+def rolling_dispersion(y: pd.Series, mu: pd.Series, test_start: str, weeks: int = 104,
+                       horizon: int = 1) -> pd.Series:
+    """alpha for each week from `test_start`, fitted on the `weeks` weeks before it only.
+
+    With a multi-week horizon, the last horizon - 1 weeks before the forecast are left out:
+    their targets reach into the weeks being forecast.
+    """
     out = {}
     for week in y.loc[test_start:].index:
-        past = y.index < week
-        out[week] = fit_dispersion(y[past].iloc[-weeks:], mu[past].iloc[-weeks:])
+        past = np.flatnonzero(y.index < week)
+        past = past[:len(past) - (horizon - 1)] if horizon > 1 else past
+        out[week] = fit_dispersion(y.iloc[past].iloc[-weeks:], mu.iloc[past].iloc[-weeks:])
     return pd.Series(out, name="alpha")
 
 
