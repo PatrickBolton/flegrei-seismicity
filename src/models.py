@@ -9,6 +9,7 @@ used for the whole year. Test weeks are never used for tuning.
 
 import numpy as np
 import pandas as pd
+from lightgbm import LGBMRegressor
 from sklearn.linear_model import PoissonRegressor
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
@@ -21,6 +22,19 @@ TRAIN_START = "2013-01-07"
 TUNE_FOLDS = 3  # validation years per tuning
 TUNE_WEEKS = 52  # weeks per validation fold
 GLM_ALPHAS = (1e-3, 1e-2, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0)  # strength of the L2 penalty
+SEED = 42
+
+# LightGBM settings searched each year (36 combinations). Small trees and strong minimum
+# leaf sizes, because there are only ~360-700 training weeks. A first grid (100-300 trees,
+# 4-15 leaves) was nearly always tuned to its smallest values, so it was extended downwards.
+LGBM_GRID = {
+    "n_estimators": [50, 100, 300],  # number of trees
+    "num_leaves": [2, 4, 8],  # leaves per tree: 2 = one split per tree, so no interactions
+    "min_child_samples": [10, 30],  # fewest training weeks in a leaf
+    "reg_lambda": [0.0, 5.0],  # L2 penalty on leaf values
+}
+LGBM_FIXED = {"objective": "poisson", "learning_rate": 0.05, "random_state": SEED, "n_jobs": 1,
+              "verbose": -1}
 
 # Our own Poisson deviance (with its 0.1 floor), so tuning and testing use the same score.
 # greater_is_better=False makes scikit-learn maximise its negative, i.e. minimise it.
@@ -82,6 +96,36 @@ def make_glm_forecaster(features: list[str], name: str, alphas=GLM_ALPHAS):
     glm.__name__ = name
     glm.chosen, glm.tuning = chosen, tuning
     return glm
+
+
+def make_lgbm_forecaster(features: list[str], name: str, grid: dict = LGBM_GRID):
+    """LightGBM forecaster with a Poisson objective, refitted every week, tuned every year.
+
+    Unlike the GLM, LightGBM handles missing feature values itself (a missing value is sent
+    down whichever branch fitted best in training), so weeks with GPS gaps are kept and
+    nothing is filled in. No standardisation is needed: trees only use the order of values.
+    forecaster.chosen holds the settings chosen per year, forecaster.tuning the searches.
+    """
+    chosen, tuning = {}, {}
+
+    def lgbm(history: pd.DataFrame, current: pd.Series) -> float:
+        train = history.loc[TRAIN_START:]
+        year = current.name.year
+        if year not in chosen:
+            search = tune(LGBMRegressor(**LGBM_FIXED), grid, train, features)
+            chosen[year] = search.best_params_
+            tuning[year] = search.cv_results_
+        model = LGBMRegressor(**LGBM_FIXED, **chosen[year]).fit(train[features], train["count"])
+        return float(model.predict(current[features].astype(float).to_frame().T)[0])
+
+    lgbm.__name__ = name
+    lgbm.chosen, lgbm.tuning = chosen, tuning
+    return lgbm
+
+
+def fit_lgbm(train: pd.DataFrame, features: list[str], params: dict) -> LGBMRegressor:
+    """A LightGBM model with the given settings, fitted on `train` (for inspection, e.g. SHAP)."""
+    return LGBMRegressor(**LGBM_FIXED, **params).fit(train[features], train["count"])
 
 
 def tuning_table(search_results: dict, param: str) -> pd.DataFrame:
