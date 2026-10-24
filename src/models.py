@@ -5,6 +5,12 @@ probability). Models are refitted before every test week on the history only, fr
 TRAIN_START. Hyperparameters are re-tuned once a year, before the first test week of each
 calendar year, by a grid search over time-ordered folds (see tune()); the best setting is
 used for the whole year. Test weeks are never used for tuning.
+
+The forecasters also take (for phase 7's sensitivity analyses) a different training start,
+a sliding window (`window_weeks`), a longer `horizon` in weeks, and the `target` column to
+forecast. With horizon h, a training week's target covers that week and the h - 1 weeks
+after it, so the last h - 1 weeks before the forecast are dropped from training: their
+targets would overlap the weeks being forecast (see training_rows).
 """
 
 import numpy as np
@@ -41,9 +47,26 @@ LGBM_FIXED = {"objective": "poisson", "learning_rate": 0.05, "random_state": SEE
 POISSON_SCORER = make_scorer(poisson_deviance, greater_is_better=False)
 
 
+def training_rows(history: pd.DataFrame, features: list[str], train_start: str = TRAIN_START,
+                  window_weeks: int | None = None, horizon: int = 1,
+                  dropna: bool = True) -> pd.DataFrame:
+    """The training weeks for a forecast made after `history`.
+
+    From `train_start`, minus the last horizon - 1 weeks (their targets aren't complete yet),
+    optionally only the last `window_weeks` of those, and without weeks with a missing
+    feature (unless dropna=False).
+    """
+    train = history.loc[train_start:]
+    if horizon > 1:
+        train = train.iloc[:-(horizon - 1)]
+    if window_weeks is not None:
+        train = train.iloc[-window_weeks:]
+    return train.dropna(subset=features) if dropna else train
+
+
 def _training_rows(history: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """History from TRAIN_START, without weeks where any feature is missing."""
-    return history.loc[TRAIN_START:].dropna(subset=features)
+    return training_rows(history, features)
 
 
 def _fill_missing(current: pd.Series, features: list[str], train: pd.DataFrame) -> pd.DataFrame:
@@ -52,7 +75,8 @@ def _fill_missing(current: pd.Series, features: list[str], train: pd.DataFrame) 
     return row.fillna(train[features].median()).to_frame().T
 
 
-def tune(estimator, param_grid: dict, train: pd.DataFrame, features: list[str]) -> GridSearchCV:
+def tune(estimator, param_grid: dict, train: pd.DataFrame, features: list[str],
+         target: str = "count", horizon: int = 1) -> GridSearchCV:
     """Grid search over time-ordered folds; returns the fitted search (best_params_, cv_results_).
 
     TimeSeriesSplit makes TUNE_FOLDS folds from the end of `train`: each validation fold is
@@ -60,20 +84,23 @@ def tune(estimator, param_grid: dict, train: pd.DataFrame, features: list[str]) 
     tuning at the start of 2023, the folds validate on roughly 2020, 2021 and 2022. (The
     default k-fold would mix past and future: never use it for time series.) Each candidate's
     score is its mean Poisson deviance over the folds. refit=False: the forecaster refits
-    weekly anyway.
+    weekly anyway. With horizon h, a gap of h - 1 weeks separates each fold's training and
+    validation weeks, so no training target overlaps the validation weeks.
     """
     search = GridSearchCV(estimator, param_grid, scoring=POISSON_SCORER, refit=False, n_jobs=-1,
-                          cv=TimeSeriesSplit(n_splits=TUNE_FOLDS, test_size=TUNE_WEEKS))
-    return search.fit(train[features], train["count"])
+                          cv=TimeSeriesSplit(n_splits=TUNE_FOLDS, test_size=TUNE_WEEKS, gap=horizon - 1))
+    return search.fit(train[features], train[target])
 
 
-def fit_glm(train: pd.DataFrame, features: list[str], alpha: float):
+def fit_glm(train: pd.DataFrame, features: list[str], alpha: float, target: str = "count"):
     """Poisson regression on standardised features (log link, L2 penalty `alpha`)."""
     model = make_pipeline(StandardScaler(), PoissonRegressor(alpha=alpha, max_iter=1000))
-    return model.fit(train[features], train["count"])
+    return model.fit(train[features], train[target])
 
 
-def make_glm_forecaster(features: list[str], name: str, alphas=GLM_ALPHAS):
+def make_glm_forecaster(features: list[str], name: str, alphas=GLM_ALPHAS,
+                        train_start: str = TRAIN_START, window_weeks: int | None = None,
+                        horizon: int = 1, target: str = "count"):
     """Poisson GLM forecaster, refitted every week, penalty re-tuned every year.
 
     For reporting, forecaster.chosen holds the penalty chosen per year and
@@ -83,14 +110,14 @@ def make_glm_forecaster(features: list[str], name: str, alphas=GLM_ALPHAS):
     grid = {"poissonregressor__alpha": list(alphas)}
 
     def glm(history: pd.DataFrame, current: pd.Series) -> float:
-        train = _training_rows(history, features)
+        train = training_rows(history, features, train_start, window_weeks, horizon)
         year = current.name.year
         if year not in chosen:
             pipeline = make_pipeline(StandardScaler(), PoissonRegressor(max_iter=1000))
-            search = tune(pipeline, grid, train, features)
+            search = tune(pipeline, grid, train, features, target, horizon)
             chosen[year] = search.best_params_["poissonregressor__alpha"]
             tuning[year] = search.cv_results_
-        model = fit_glm(train, features, chosen[year])
+        model = fit_glm(train, features, chosen[year], target)
         return float(model.predict(_fill_missing(current, features, train))[0])
 
     glm.__name__ = name
@@ -140,10 +167,11 @@ MIN_POSITIVE_WEEKS = 10
 CLIMATOLOGY_WEEKS = 52
 
 
-def share_large(history: pd.DataFrame, weeks: int = 156) -> float:
-    """Fraction of events (M >= Mc) in the last `weeks` weeks that reached M >= 3."""
+def share_large(history: pd.DataFrame, weeks: int = 156, column: str = "count_large") -> float:
+    """Fraction of events (M >= Mc) in the last `weeks` weeks that reached M >= 3 (or the
+    threshold counted in `column`)."""
     past = history.iloc[-weeks:]
-    return float(past["count_large"].sum() / max(past["count"].sum(), 1))
+    return float(past[column].sum() / max(past["count"].sum(), 1))
 
 
 def _make_classifier(kind: str, C: float = 0.1):
@@ -159,7 +187,9 @@ def _make_classifier(kind: str, C: float = 0.1):
 
 
 def make_classifier_forecaster(features: list[str], name: str, kind: str = "logistic",
-                               window_weeks: int | None = None, C: float = 0.1, fallback=None):
+                               window_weeks: int | None = None, C: float = 0.1, fallback=None,
+                               train_start: str = TRAIN_START, horizon: int = 1,
+                               target: str = "has_large"):
     """Direct forecaster of P(M >= 3 next week): logistic regression or LightGBM.
 
     Refitted every week, on weeks from TRAIN_START or, with `window_weeks`, on the last
@@ -172,18 +202,17 @@ def make_classifier_forecaster(features: list[str], name: str, kind: str = "logi
     state = {"active_from": None}
 
     def classifier(history: pd.DataFrame, current: pd.Series) -> float:
-        train = history.loc[TRAIN_START:]
-        if window_weeks is not None:
-            train = train.iloc[-window_weeks:]
-        if kind == "logistic":  # the logistic model can't take missing values
-            train = train.dropna(subset=features)
-        if train["has_large"].sum() < MIN_POSITIVE_WEEKS:
+        # The logistic model can't take missing values; LightGBM can.
+        train = training_rows(history, features, train_start, window_weeks, horizon,
+                              dropna=(kind == "logistic"))
+        if train[target].sum() < MIN_POSITIVE_WEEKS:
             if fallback is not None:
                 return float(fallback(history, current))
-            return float(history["has_large"].iloc[-CLIMATOLOGY_WEEKS:].mean())
+            complete = history.iloc[:-(horizon - 1)] if horizon > 1 else history
+            return float(complete[target].iloc[-CLIMATOLOGY_WEEKS:].mean())
         if state["active_from"] is None:
             state["active_from"] = current.name
-        model = _make_classifier(kind, C).fit(train[features], train["has_large"].astype(int))
+        model = _make_classifier(kind, C).fit(train[features], train[target].astype(int))
         x = current[features].astype(float).to_frame().T
         if kind == "logistic":
             x = _fill_missing(current, features, train)

@@ -17,6 +17,8 @@ M_LARGE = 3.0  # "larger events" for the probability target
 LAMBDA_FLOOR = 0.1  # smallest expected weekly count allowed (see poisson_deviance)
 P_CLIP = 1e-3  # probabilities are kept in [P_CLIP, 1 - P_CLIP] for log-loss
 TARGET_COLUMNS = ["count", "count_large", "has_large"]  # hidden from the week being forecast
+# Any column starting with these is a target (e.g. count_h4, has_large25) and is hidden too.
+TARGET_PREFIXES = ("count", "has_large")
 
 
 def weekly_targets(events: pd.DataFrame, start: str, end: str, mc: float = MC_MAIN) -> pd.DataFrame:
@@ -34,6 +36,30 @@ def weekly_targets(events: pd.DataFrame, start: str, end: str, mc: float = MC_MA
     return table
 
 
+def add_horizon_targets(weekly: pd.DataFrame, weeks: int) -> pd.DataFrame:
+    """Targets over `weeks` weeks starting at each week: count_h{weeks}, count_large_h{weeks},
+    has_large_h{weeks}. Missing where the table ends before the period does."""
+    out = weekly.copy()
+    ahead = lambda s: s.rolling(weeks).sum().shift(-(weeks - 1))  # noqa: E731
+    out[f"count_h{weeks}"] = ahead(out["count"])
+    out[f"count_large_h{weeks}"] = ahead(out["count_large"])
+    out[f"has_large_h{weeks}"] = (out[f"count_large_h{weeks}"] > 0).astype(float).where(
+        out[f"count_large_h{weeks}"].notna())
+    return out
+
+
+def add_threshold_targets(weekly: pd.DataFrame, events: pd.DataFrame, magnitude: float,
+                          suffix: str) -> pd.DataFrame:
+    """Targets for another "larger event" threshold: count_large{suffix}, has_large{suffix}."""
+    m = bin_magnitudes(events["md"])
+    start, end = weekly.index[0].strftime("%Y-%m-%d"), weekly.index[-1].strftime("%Y-%m-%d")
+    counts = event_counts(events[m >= magnitude - 1e-9], "W", start=start, end=end)
+    out = weekly.copy()
+    out[f"count_large{suffix}"] = counts.reindex(out.index, fill_value=0)
+    out[f"has_large{suffix}"] = out[f"count_large{suffix}"] > 0
+    return out
+
+
 def walk_forward(weekly: pd.DataFrame, forecast: Callable[[pd.DataFrame, pd.Series], float],
                  test_start: str, test_end: str) -> pd.Series:
     """Forecast each test week from the weeks before it only.
@@ -44,7 +70,8 @@ def walk_forward(weekly: pd.DataFrame, forecast: Callable[[pd.DataFrame, pd.Seri
     deliberately marked as such). It returns one number: an expected count or a probability.
     """
     test_weeks = weekly.loc[test_start:test_end].index
-    values = [forecast(weekly.loc[weekly.index < week], weekly.loc[week].drop(TARGET_COLUMNS))
+    targets = [c for c in weekly.columns if c.startswith(TARGET_PREFIXES)]
+    values = [forecast(weekly.loc[weekly.index < week], weekly.loc[week].drop(targets))
               for week in test_weeks]
     return pd.Series(values, index=test_weeks, name=getattr(forecast, "__name__", "forecast"))
 
