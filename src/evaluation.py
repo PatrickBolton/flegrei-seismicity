@@ -307,3 +307,25 @@ def probability_report(happened: pd.Series, forecasts: dict[str, pd.Series],
                       "pr_auc": average_precision_score(y, np.asarray(p, dtype=float))}
     table = pd.DataFrame(rows).T
     return table[["brier", "brier_skill", "log_loss", "auc", "pr_auc", "reliability", "resolution", "uncertainty"]]
+
+
+def detectable_difference(per_week_a: pd.Series, per_week_b: pd.Series, block_weeks: int = 8,
+                          n_boot: int = 2000, seed: int = 0) -> dict:
+    """paired_difference plus what the comparison could detect.
+
+    - se: standard error of the mean difference, from the same block bootstrap.
+    - mde_80: the minimum detectable effect, 2.8 x se: a true difference this large would be
+      found significant (5% level, two-sided) about 80% of the time (1.96 + 0.84 = 2.8).
+    - best_case_gain: -ci_low when A could be better (ci_low < 0), else 0: the largest
+      improvement by A that the data still allow, at the 95% level.
+    """
+    d = (per_week_a - per_week_b).to_numpy()
+    n = len(d)
+    rng = np.random.default_rng(seed)
+    starts = rng.integers(0, n - block_weeks + 1, size=(n_boot, int(np.ceil(n / block_weeks))))
+    idx = (starts[:, :, None] + np.arange(block_weeks)).reshape(n_boot, -1)[:, :n]
+    means = d[idx].mean(axis=1)
+    low, high = np.percentile(means, [2.5, 97.5])
+    se = float(means.std(ddof=1))
+    return {"mean_difference": float(d.mean()), "ci_low": float(low), "ci_high": float(high),
+            "se": se, "mde_80": 2.8 * se, "best_case_gain": float(max(-low, 0.0))}
