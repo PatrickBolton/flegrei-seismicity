@@ -260,3 +260,50 @@ def nb_probability_at_least_one(mu, share, alpha):
     lam = np.maximum(np.asarray(mu, dtype=float), LAMBDA_FLOOR) * np.asarray(share, dtype=float)
     a = np.maximum(np.asarray(alpha, dtype=float), ALPHA_BOUNDS[0])
     return 1 - (1 + a * lam) ** (-1 / a)
+
+
+# ---- Probability forecasts: complete scoring and recalibration (phase 7) ----
+
+def recalibrate(p: pd.Series, happened: pd.Series, start: str, window: int = 156,
+                min_positive: int = 10) -> pd.Series:
+    """Walk-forward Platt recalibration of a probability forecast.
+
+    For each week from `start`, fit P(event) = sigmoid(a + b * logit(p)) on the previous
+    `window` weeks' (forecast, outcome) pairs, and apply it to that week's forecast. Until
+    the window holds `min_positive` weeks with the event, the raw forecast is kept.
+    """
+    from sklearn.linear_model import LogisticRegression
+    pc = np.clip(p.astype(float), P_CLIP, 1 - P_CLIP)
+    logit = np.log(pc / (1 - pc))
+    out = {}
+    for week in p.loc[start:].index:
+        past = p.index < week
+        x, y = logit[past].iloc[-window:], happened[past].iloc[-window:].astype(int)
+        if y.sum() < min_positive or y.nunique() < 2:
+            out[week] = float(pc[week])
+            continue
+        model = LogisticRegression(C=1e6, max_iter=1000).fit(x.to_frame(), y)
+        out[week] = float(model.predict_proba(pd.DataFrame({x.name: [logit[week]]}))[0, 1])
+    return pd.Series(out, name=p.name)
+
+
+def probability_report(happened: pd.Series, forecasts: dict[str, pd.Series],
+                       reference: str) -> pd.DataFrame:
+    """Brier, log-loss, Brier skill score against `reference`, ROC AUC, precision-recall AUC,
+    and the Brier decomposition, for each forecaster.
+
+    Brier skill score: 1 - Brier / Brier(reference); 0 = no better than the reference, 1 =
+    perfect. Precision-recall AUC (average precision) suits rare events: its no-skill value
+    is the base rate, not 0.5.
+    """
+    from sklearn.metrics import average_precision_score
+    y = np.asarray(happened, dtype=int)
+    ref = brier_score(happened, forecasts[reference])
+    rows = {}
+    for name, p in forecasts.items():
+        b = brier_score(happened, p)
+        rows[name] = {"brier": b, "log_loss": log_loss(happened, p), "brier_skill": 1 - b / ref,
+                      **ranking_scores(happened, {name: p}).loc[name].to_dict(),
+                      "pr_auc": average_precision_score(y, np.asarray(p, dtype=float))}
+    table = pd.DataFrame(rows).T
+    return table[["brier", "brier_skill", "log_loss", "auc", "pr_auc", "reliability", "resolution", "uncertainty"]]
