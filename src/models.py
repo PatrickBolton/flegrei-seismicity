@@ -16,6 +16,7 @@ targets would overlap the weeks being forecast (see training_rows).
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier, LGBMRegressor
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import LogisticRegression, PoissonRegressor
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
@@ -104,27 +105,56 @@ def fit_glm(train: pd.DataFrame, features: list[str], alpha: float, target: str 
     return model.fit(train[features], train[target])
 
 
+class OffsetPoissonRegressor(RegressorMixin, BaseEstimator):
+    """Poisson regression with a fixed offset (Part 2): the last column of X is log(E), and the
+    model is log(mean) = log(E) + b0 + b . x on the other (standardised) columns, so it learns a
+    multiplicative correction to E. scikit-learn has no offset option, but the Poisson
+    likelihood with offset E equals that of the rate y / E with sample weights E:
+    sum(y log(E mu) - E mu) = sum(E ((y / E) log mu - mu)) + constant."""
+
+    def __init__(self, alpha: float = 1.0):
+        self.alpha = alpha
+
+    def fit(self, X, y):
+        X = np.asarray(X, dtype=float)
+        exposure = np.exp(X[:, -1])
+        self.model_ = make_pipeline(StandardScaler(), PoissonRegressor(alpha=self.alpha, max_iter=1000))
+        self.model_.fit(X[:, :-1], np.asarray(y, dtype=float) / exposure, poissonregressor__sample_weight=exposure)
+        return self
+
+    def predict(self, X):
+        X = np.asarray(X, dtype=float)
+        return np.exp(X[:, -1]) * self.model_.predict(X[:, :-1])
+
+
 def make_glm_forecaster(features: list[str], name: str, alphas=GLM_ALPHAS,
                         train_start: str = TRAIN_START, window_weeks: int | None = None,
-                        horizon: int = 1, target: str = "count"):
+                        horizon: int = 1, target: str = "count", offset: str | None = None):
     """Poisson GLM forecaster, refitted every week, penalty re-tuned every year.
 
+    offset: a column holding log(E) for a fixed offset (OffsetPoissonRegressor), e.g. the log
+    of a physics model's forecast; the GLM then learns only a correction to E.
     For reporting, forecaster.chosen holds the penalty chosen per year and
     forecaster.tuning the grid-search results per year.
     """
     chosen, tuning = {}, {}
-    grid = {"poissonregressor__alpha": list(alphas)}
+    columns = features + [offset] if offset else features
+    grid = {"alpha" if offset else "poissonregressor__alpha": list(alphas)}
+
+    def new_model(alpha=1.0):
+        if offset:
+            return OffsetPoissonRegressor(alpha=alpha)
+        return make_pipeline(StandardScaler(), PoissonRegressor(alpha=alpha, max_iter=1000))
 
     def glm(history: pd.DataFrame, current: pd.Series) -> float:
-        train = training_rows(history, features, train_start, window_weeks, horizon)
+        train = training_rows(history, columns, train_start, window_weeks, horizon)
         year = current.name.year
         if year not in chosen:
-            pipeline = make_pipeline(StandardScaler(), PoissonRegressor(max_iter=1000))
-            search = tune(pipeline, grid, train, features, target, horizon)
-            chosen[year] = search.best_params_["poissonregressor__alpha"]
+            search = tune(new_model(), grid, train, columns, target, horizon)
+            chosen[year] = next(iter(search.best_params_.values()))
             tuning[year] = search.cv_results_
-        model = fit_glm(train, features, chosen[year], target)
-        return float(model.predict(_fill_missing(current, features, train))[0])
+        model = new_model(chosen[year]).fit(train[columns], train[target])
+        return float(model.predict(_fill_missing(current, columns, train))[0])
 
     glm.__name__ = name
     glm.chosen, glm.tuning = chosen, tuning

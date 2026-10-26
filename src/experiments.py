@@ -145,20 +145,23 @@ def run(table: pd.DataFrame, s: Setting, start: str, end: str,
 
     Returns {"counts": DataFrame, "probs": DataFrame}, one column per forecaster.
     """
+    return {kind: _run_cached(table, factories, f"{s.name}__{kind}", start, end)
+            for kind, factories in forecasters(s, include_main_only).items()}
+
+
+def _run_cached(table: pd.DataFrame, factories: dict, prefix: str, start: str, end: str) -> pd.DataFrame:
+    """walk_forward each factory's forecaster over [start, end], caching each result."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     fp = _fingerprint(table)
-    out = {}
-    for kind, factories in forecasters(s, include_main_only).items():
-        columns = {}
-        for name, factory in factories.items():
-            path = CACHE_DIR / f"{s.name}__{kind}__{name}__{start}__{end}__{fp}.parquet"
-            if path.exists():
-                columns[name] = pd.read_parquet(path)[name]
-            else:
-                columns[name] = walk_forward(table, factory(), start, end).rename(name)
-                columns[name].to_frame().to_parquet(path)
-        out[kind] = pd.DataFrame(columns)
-    return out
+    columns = {}
+    for name, factory in factories.items():
+        path = CACHE_DIR / f"{prefix}__{name}__{start}__{end}__{fp}.parquet"
+        if path.exists():
+            columns[name] = pd.read_parquet(path)[name]
+        else:
+            columns[name] = walk_forward(table, factory(), start, end).rename(name)
+            columns[name].to_frame().to_parquet(path)
+    return pd.DataFrame(columns)
 
 
 # ---- Physics baselines (Part 2): ETAS, rate-and-state, and the hybrid ----
@@ -193,3 +196,40 @@ def run_physics(table: pd.DataFrame, events: pd.DataFrame, uplift: pd.DataFrame,
         weeks.append(pd.read_parquet(paths["weeks"]).assign(model=model))
     return {"counts": pd.DataFrame(counts), "fits": pd.concat(fits, ignore_index=True),
             "weeks": pd.concat(weeks, ignore_index=True)}
+
+
+# ---- ML with the physics forecast as an input (Part 2, milestone 5) ----
+
+PHYSICS_FEATURES = {"etas": "log_physics_etas", "hybrid": "log_physics_rs_etas"}
+
+
+def add_physics_features(table: pd.DataFrame, physics_counts: pd.DataFrame) -> pd.DataFrame:
+    """The table plus log(physics forecast) per week (floored at LAMBDA_FLOOR, like the scores).
+    Each value is the walk-forward forecast made before its week, so it is a legitimate
+    feature of that week; weeks without a physics forecast are left missing."""
+    from src.evaluation import LAMBDA_FLOOR
+
+    out = table.copy()
+    for column, name in [(PHYSICS_FEATURES["etas"], "physics_etas"), (PHYSICS_FEATURES["hybrid"], "physics_rs_etas")]:
+        out[column] = np.log(np.maximum(physics_counts[name], LAMBDA_FLOOR)).reindex(out.index)
+    return out
+
+
+def ml_physics_forecasters() -> dict:
+    """The Part 1 GLM and LightGBM (seismic features) with a physics forecast added, either as
+    one more feature or (GLM) as a fixed offset that the GLM corrects. Main setting only."""
+    factories = {}
+    for short, column in PHYSICS_FEATURES.items():
+        factories[f"glm_seismic+{short}"] = (
+            lambda c=column, n=f"glm_seismic+{short}": make_glm_forecaster(SEISMIC_FEATURES + [c], n))
+        factories[f"glm_offset_{short}"] = (
+            lambda c=column, n=f"glm_offset_{short}": make_glm_forecaster(SEISMIC_FEATURES, n, offset=c))
+        factories[f"lgbm_seismic+{short}"] = (
+            lambda c=column, n=f"lgbm_seismic+{short}": make_lgbm_forecaster(SEISMIC_FEATURES + [c], n))
+    return factories
+
+
+def run_ml_physics(table: pd.DataFrame, start: str, end: str) -> pd.DataFrame:
+    """Walk the ml_physics_forecasters forward over [start, end], with caching. `table` must
+    contain the physics feature columns (add_physics_features)."""
+    return _run_cached(table, ml_physics_forecasters(), "mlphysics__counts", start, end)
