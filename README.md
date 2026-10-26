@@ -147,7 +147,7 @@ needs OpenMP (`brew install libomp`).
 
 ### Data
 
-Raw data lives in `data/raw/` and is not committed. To download it (about 10 MB):
+Raw data lives in `data/raw/` and is not committed. To download it (about 40 MB):
 
 ```bash
 python scripts/download_data.py
@@ -160,10 +160,11 @@ This fetches:
 | `catalogue/` | INGV-OV GOSSIP earthquake catalogue for Campi Flegrei, one CSV per year from 2005 |
 | `gps_21_stations/` | Daily East/North/Up GPS displacements for 21 stations, 2000–2025 |
 | `gps_rite/` | Daily and weekly vertical GPS displacement at station RITE, 2000–2024 |
+| `hainzl/` | Code and data of Hainzl, Dahm & Tramelli (2026): their catalogue, an uplift series since 1905 (levelling joined to GPS), fitted parameters and forecasts. Used for the physics baselines |
 | `osm/` | Coastline, lakes and place names from OpenStreetMap, for maps |
 
 Each folder gets a `SOURCES.json` with every file's URL, download time (UTC) and SHA-256
-checksum. The GPS files are also checked against the MD5 checksums published by Zenodo. The
+checksum. The Zenodo files (GPS and Hainzl et al.) are also checked against the MD5 checksums published by Zenodo. The
 catalogue is updated continuously, so a later download will contain more (and revised) events.
 
 GPS station coordinates are in `data/reference/gps_stations.csv` (committed; see the README
@@ -180,7 +181,7 @@ recompute them.
 
 ## Credits
 
-The earthquake and GPS data are published under
+The earthquake and GPS data, and Hainzl et al.'s code and data, are published under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 - Ricciolino, P., Lo Bascio, D., & Esposito, R. (2024). *GOSSIP - Database Sismologico Pubblico
@@ -197,6 +198,8 @@ The earthquake and GPS data are published under
   Volcano, and Ischia Island) from 20 Years of Continuous GPS Observations (2000–2019).
   *Remote Sensing*, 13(14), 2725. https://doi.org/10.3390/rs13142725 (also the source of the
   station coordinates, from its Table 1).
+- Hainzl, S. (2026). *Codes and files related to Hainzl, Dahm & Tramelli (2026)* [Dataset].
+  Zenodo. https://doi.org/10.5281/zenodo.18413119
 - Map features: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors,
   available under the [Open Database Licence (ODbL)](https://opendatacommons.org/licenses/odbl/).
 

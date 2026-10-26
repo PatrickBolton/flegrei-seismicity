@@ -5,6 +5,8 @@ Fetches:
   (doi:10.13127/gossip), one static CSV per year;
 - GPS time series of 21 stations (doi:10.5281/zenodo.22259337);
 - GPS vertical time series of station RITE (doi:10.5281/zenodo.17132077);
+- code and data of Hainzl, Dahm & Tramelli (2026), for the physics baselines
+  (doi:10.5281/zenodo.18413119);
 - map features (coastline, lakes, place names) from OpenStreetMap, for plots.
 
 The INGV and Zenodo data are CC BY 4.0; OpenStreetMap data is ODbL. Each folder
@@ -51,6 +53,7 @@ ZENODO_API = "https://zenodo.org/api/records/{record_id}"
 ZENODO_RECORDS = {
     "gps_21_stations": 22259337,  # De Martino et al. (2026)
     "gps_rite": 17132077,  # De Martino et al. (2025)
+    "hainzl": 18413119,  # Hainzl, Dahm & Tramelli (2026): code, catalogues, uplift
 }
 
 
