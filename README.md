@@ -1,4 +1,4 @@
-# Campi Flegrei: can ground uplift forecast earthquake rates?
+# Can ground uplift forecast earthquake rates? ML vs. physics-based models
 
 Campi Flegrei, the volcanic caldera beneath Pozzuoli near Naples, is in a long period of unrest:
 the ground has risen by about 1.6 m since 2005 and earthquakes have become far more frequent.
@@ -7,12 +7,8 @@ earthquakes will happen in the coming week, and how likely a larger one (magnitu
 is.**
 
 It forecasts *rates and probabilities*, not individual earthquakes, which cannot be predicted.
-It is a learning project in machine learning, built on public data, with all the code included
+It is an exploratory project in machine learning, built on public data, with the code included
 so the results can be checked and extended.
-
-> **This is a research exercise, not a hazard forecast.** For official information about Campi
-> Flegrei, see the [INGV Vesuvius Observatory (INGV-OV)](https://www.ov.ingv.it/) and the
-> Italian [Civil Protection Department](https://www.protezionecivile.gov.it/).
 
 **Short answer:** past earthquakes are the best guide to next week's earthquakes. Adding GPS
 uplift, whether from the main station or combined over many stations, made no measurable
@@ -21,12 +17,14 @@ least as well as two physics-based models of the unrest, including a 2026 model 
 uplift drives the earthquake rate, and letting the uplift drive that physics model didn't
 measurably improve its week-ahead forecasts either.
 
+**Disclaimer:** This is a research exercise, not a hazard forecast. For official information about Campi Flegrei, see the [INGV Vesuvius Observatory (INGV-OV)](https://www.ov.ingv.it/) and the Italian [Civil Protection Department](https://www.protezionecivile.gov.it/).
+
 ## The question, and where it comes from
 
 A 2025 study ([Godano et al., arXiv 2503.20129](https://arxiv.org/abs/2503.20129)) showed that
 the cumulative number of earthquakes at Campi Flegrei rises smoothly with the uplift at one GPS
-station, and explained this with a simple "epidemic" model in which uplift loads the rock and
-earthquakes trigger further earthquakes. It released no code and did not test forecasts.
+station, and explained this with a simple epidemic model in which uplift loads the rock and
+earthquakes trigger further earthquakes.
 
 This project:
 
@@ -60,24 +58,6 @@ This project:
 What this project adds: an out-of-sample comparison, week by week on the same 312 weeks and with
 the same scores, of machine-learning and physics-based forecasts, with and without the uplift,
 in open code.
-
-References:
-
-- Godano, C., Convertito, V., Tramelli, A., & Petrillo, G. (2025). How ground deformation
-  influences earthquake occurrence during the ongoing unrest at Campi Flegrei (2005–present).
-  arXiv:2503.20129. https://arxiv.org/abs/2503.20129
-- Petrillo, G., & Taroni, M. (2025). Adding strain rate information into a short-term
-  seismicity model improves forecasting performances: the case of Campi Flegrei, Italy.
-  *Seismica*, 4(2). https://doi.org/10.26443/seismica.v4i2.1908
-- Hainzl, S., Dahm, T., & Tramelli, A. (2026). A deformation-driven earthquake interaction model
-  for seismicity at Campi Flegrei. *Communications Earth & Environment*, 7, 244.
-  https://doi.org/10.1038/s43247-026-03296-3
-- Iaccarino, A. G., Picozzi, M., De Landro, G., & Spallarossa, D. (2025). Preparatory phase of
-  major earthquakes during Campi Flegrei unrest (2020–2024). *Journal of Geophysical Research:
-  Solid Earth*, 130, e2025JB031777. https://doi.org/10.1029/2025JB031777
-- Tan, X., Tramelli, A., Gammaldi, S., Beroza, G. C., Ellsworth, W. L., & Marzocchi, W. (2025).
-  A clearer view of the current phase of unrest at Campi Flegrei caldera. *Science*, 390,
-  70–75. https://doi.org/10.1126/science.adw9038
 
 ## What the data show
 
@@ -302,6 +282,25 @@ hundreds of weekly model fits; `05_evaluation` caches its forecasts in
 `data/processed/forecasts/` (git-ignored), as do `06` and `07` (the physics forecasts take
 about 15 minutes the first time). Delete that folder after changing model code, to
 recompute them.
+
+## References
+
+- Godano, C., Convertito, V., Tramelli, A., & Petrillo, G. (2025). How ground deformation
+  influences earthquake occurrence during the ongoing unrest at Campi Flegrei (2005–present).
+  arXiv:2503.20129. https://arxiv.org/abs/2503.20129
+- Petrillo, G., & Taroni, M. (2025). Adding strain rate information into a short-term
+  seismicity model improves forecasting performances: the case of Campi Flegrei, Italy.
+  *Seismica*, 4(2). https://doi.org/10.26443/seismica.v4i2.1908
+- Hainzl, S., Dahm, T., & Tramelli, A. (2026). A deformation-driven earthquake interaction model
+  for seismicity at Campi Flegrei. *Communications Earth & Environment*, 7, 244.
+  https://doi.org/10.1038/s43247-026-03296-3
+- Iaccarino, A. G., Picozzi, M., De Landro, G., & Spallarossa, D. (2025). Preparatory phase of
+  major earthquakes during Campi Flegrei unrest (2020–2024). *Journal of Geophysical Research:
+  Solid Earth*, 130, e2025JB031777. https://doi.org/10.1029/2025JB031777
+- Tan, X., Tramelli, A., Gammaldi, S., Beroza, G. C., Ellsworth, W. L., & Marzocchi, W. (2025).
+  A clearer view of the current phase of unrest at Campi Flegrei caldera. *Science*, 390,
+  70–75. https://doi.org/10.1126/science.adw9038
+
 
 ## Credits
 
