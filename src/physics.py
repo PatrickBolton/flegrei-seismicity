@@ -25,6 +25,9 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+from src.completeness import BIN_WIDTH, MC_MAIN, b_value_mle, bin_magnitudes
+from src.gps import MJD_EPOCH
+
 MCUT = 0.45  # their magnitude cut: Md >= 0.5 at 0.1 resolution
 TMAX_TRIGGER = 100.0  # days: aftershocks are only triggered for this long (their TmaxTrig)
 FIT_START_YEAR = 2005.0
@@ -49,6 +52,35 @@ def year_to_mjd(year: float, uplift: pd.DataFrame) -> float:
     slope, intercept = np.polyfit(uplift["mjd"], uplift["year"], 1)
     return (year - intercept) / slope
 
+
+
+# ---- Our data in the same form ----
+
+def rite_offset(hainzl_uplift: pd.DataFrame, gps: pd.DataFrame, station: str = "RITE") -> float:
+    """Their series minus our station's vertical position, median over the days both have."""
+    ours = gps.loc[gps["station"] == station, ["date", "up"]]
+    ours = pd.DataFrame({"mjd": (ours["date"] - MJD_EPOCH).dt.days.to_numpy(), "up": ours["up"].to_numpy()})
+    both = hainzl_uplift.merge(ours, on="mjd")
+    return float((both["uplift"] - both["up"]).median())
+
+
+def uplift_series(hainzl_uplift: pd.DataFrame, gps: pd.DataFrame, station: str = "RITE") -> pd.DataFrame:
+    """Uplift since 1905 (m): their series until our station starts, then our daily station
+    position plus the offset that puts it on their zero. Columns mjd, uplift."""
+    ours = gps.loc[gps["station"] == station, ["date", "up"]].dropna().sort_values("date")
+    ours = pd.DataFrame({"mjd": ((ours["date"] - MJD_EPOCH).dt.days).astype(float).to_numpy(),
+                         "uplift": ours["up"].to_numpy() + rite_offset(hainzl_uplift, gps, station)})
+    before = hainzl_uplift.loc[hainzl_uplift["mjd"] < ours["mjd"].iloc[0], ["mjd", "uplift"]]
+    return pd.concat([before, ours], ignore_index=True)
+
+
+def physics_events(catalogue: pd.DataFrame, mc: float = MC_MAIN) -> pd.DataFrame:
+    """Our catalogue as (mjd, m) for events whose binned magnitude is >= mc (the weekly target's
+    definition). m is the raw Md; the matching productivity reference is mc - BIN_WIDTH / 2."""
+    ev = catalogue.dropna(subset=["md"])
+    ev = ev[bin_magnitudes(ev["md"]) >= mc - 1e-9]
+    mjd = (ev["time"] - MJD_EPOCH) / pd.Timedelta(days=1)
+    return pd.DataFrame({"mjd": mjd.to_numpy(), "m": ev["md"].to_numpy()}).sort_values("mjd", ignore_index=True)
 
 # ---- Rate-and-state background ----
 
@@ -76,11 +108,12 @@ MODELS = {  # parameters of each model
 
 
 def prepare(events: pd.DataFrame, uplift: pd.DataFrame, t1: float, t2: float,
-            tmax: float = TMAX_TRIGGER) -> dict:
+            tmax: float = TMAX_TRIGGER, mcut: float = MCUT) -> dict:
     """Everything the likelihood needs for a fit window [t1, t2] (days), computed once.
 
     `events` are all events up to t2, including those before t1: they can still trigger events
-    in the window. `uplift` is the whole series (RS integrates over its full history).
+    in the window. `uplift` is the whole series (RS integrates over its full history). `mcut` is
+    the reference magnitude of the productivity (the lower edge of the smallest magnitude bin).
     """
     events = events[events["mjd"] <= t2].sort_values("mjd")
     t, m = events["mjd"].to_numpy(), events["m"].to_numpy()
@@ -93,7 +126,7 @@ def prepare(events: pd.DataFrame, uplift: pd.DataFrame, t1: float, t2: float,
     pair_j = np.concatenate([np.arange(a, b) for a, b in zip(lo, hi)]) if len(target) else np.array([], int)
     grid = uplift[uplift["mjd"] <= t2]
     return {
-        "t": t, "m": m, "t1": t1, "t2": t2, "tmax": tmax,
+        "t": t, "m": m, "t1": t1, "t2": t2, "tmax": tmax, "mcut": mcut,
         "target": target, "pair_i": pair_i, "pair_j": pair_j,
         "lag": t[target][pair_i] - t[pair_j],
         "contributes": (t > t1 - tmax) & (t <= t2),  # events whose aftershocks fall in the window
@@ -127,7 +160,7 @@ def intensities(params: dict, data: dict, model: str):
     total = background
     if model != "rs":
         K, alpha, c, p = (params[k] for k in ["K", "alpha", "c", "p"])
-        productivity = K * 10.0 ** (alpha * (data["m"] - MCUT))
+        productivity = K * 10.0 ** (alpha * (data["m"] - data["mcut"]))
         kernel = productivity[data["pair_j"]] * (c + data["lag"]) ** (-p)
         total = background + np.bincount(data["pair_i"], weights=kernel, minlength=len(target))
         cont = data["contributes"]
@@ -163,7 +196,7 @@ def expected_counts(params: dict, data: dict, model: str, edges) -> pd.DataFrame
         t, m = data["t"], data["m"]
         for k, (a, b) in enumerate(zip(edges[:-1], edges[1:])):
             cont = (t > a - data["tmax"]) & (t <= b)
-            triggered[k] = triggering_integral(t[cont], K * 10.0 ** (alpha * (m[cont] - MCUT)), c, p,
+            triggered[k] = triggering_integral(t[cont], K * 10.0 ** (alpha * (m[cont] - data["mcut"])), c, p,
                                                a, b, data["tmax"])
     return pd.DataFrame({"start": edges[:-1], "end": edges[1:], "background": background, "triggered": triggered})
 
@@ -219,6 +252,115 @@ def fit(data: dict, model: str, n_random: int = 4, seed: int = 42, start: dict |
             "runs": runs}
 
 
+
+# ---- Weekly forecasts ----
+
+TREND_DAYS = 100.0  # uplift during the forecast is extrapolated from this many past days (Hainzl et al.)
+
+
+def to_mjd(time) -> float:
+    """A timestamp (UTC if it has no time zone) as MJD in days."""
+    time = pd.Timestamp(time)
+    time = time.tz_localize("UTC") if time.tzinfo is None else time
+    return (time - MJD_EPOCH) / pd.Timedelta(days=1)
+
+
+def extrapolated_uplift(uplift: pd.DataFrame, t0: float, days: float, trend_days: float = TREND_DAYS):
+    """The uplift grid before t0, extended over [t0, t0 + days] by a straight line fitted to the
+    last trend_days and shifted to start from the last observation (as in Hainzl et al.)."""
+    past = uplift[uplift["mjd"] < t0]
+    recent = past[past["mjd"] >= t0 - trend_days]
+    slope = np.polyfit(recent["mjd"], recent["uplift"], 1)[0]
+    future_t = t0 + np.arange(int(days) + 1, dtype=float)
+    future = past["uplift"].iloc[-1] + slope * (future_t - past["mjd"].iloc[-1])
+    return np.concatenate([past["mjd"], future_t]), np.concatenate([past["uplift"], future])
+
+
+def weekly_forecast(params: dict, model: str, events: pd.DataFrame, uplift: pd.DataFrame, t0: float,
+                    days: float = 7.0, mcut: float = MCUT, tmax: float = TMAX_TRIGGER,
+                    b: float | None = None, n_sims: int = 0, seed: int = 42) -> dict:
+    """Expected events in [t0, t0 + days] from data before t0 only.
+
+    background and triggered (aftershocks of earlier events) are exact integrals; their sum,
+    no_cascade, leaves out aftershocks of the period's own events. With n_sims > 0 (ETAS and
+    the hybrid), `expected` is instead the mean count of n_sims simulations, which include them
+    (magnitudes Gutenberg-Richter with this b). Each period's random numbers are seeded from
+    seed and t0, so results don't depend on the order periods are forecast in.
+    """
+    t1 = t0 + days
+    if model == "etas":
+        background, cells = params["mu"] * days, None
+    else:
+        grid_t, grid_uplift = extrapolated_uplift(uplift, t0, days)
+        rate = np.exp(log_rs_rate(grid_t, grid_uplift, params["r"], params["asig"], params["ta"]))
+        future = grid_t >= t0
+        background = float(np.trapezoid(rate[future], grid_t[future]))
+        cells = (grid_t[future], rate[future])
+    triggered = 0.0
+    if model != "rs":
+        recent = events[(events["mjd"] < t0) & (events["mjd"] > t0 - tmax)]
+        productivity = params["K"] * 10.0 ** (params["alpha"] * (recent["m"].to_numpy() - mcut))
+        triggered = float(triggering_integral(recent["mjd"].to_numpy(), productivity, params["c"], params["p"],
+                                              t0, t1, tmax))
+    out = {"background": background, "triggered": triggered, "no_cascade": background + triggered}
+    out["expected"] = out["no_cascade"]
+    if n_sims and model != "rs":
+        rng = np.random.default_rng([seed, int(round(t0))])
+        recent = events[(events["mjd"] < t0) & (events["mjd"] > t0 - tmax)]
+        counts = [len(simulate_etas(params, t0, t1, b, rng, background=cells, history=recent, mcut=mcut, tmax=tmax))
+                  for _ in range(n_sims)]
+        out["expected"] = float(np.mean(counts))
+    return out
+
+
+def make_physics_forecaster(model: str, events: pd.DataFrame, uplift: pd.DataFrame,
+                            fit_start: str = "2005-01-01", mc: float = MC_MAIN, n_sims: int = 2000,
+                            n_random: int = 2, seed: int = 42):
+    """A walk_forward forecaster: the expected count of the week starting at current.name.
+
+    The model is refitted at the first week of each calendar quarter, on events and uplift from
+    before that week only (fit window from fit_start), starting from the previous fit's
+    parameters plus n_random random starts. b for simulated magnitudes is estimated on the same
+    events. `forecast.log` keeps every fit and every week's breakdown, for inspection.
+    """
+    mcut = mc - BIN_WIDTH / 2
+    state = {"quarter": None, "params": None}
+    log = {"fits": [], "weeks": []}
+
+    def forecast(history, current):
+        week = pd.Timestamp(current.name)
+        t0 = to_mjd(week)
+        quarter = (week.year, (week.month - 1) // 3)
+        if quarter != state["quarter"]:
+            past = events[events["mjd"] < t0]
+            data = prepare(past, uplift[uplift["mjd"] < t0], to_mjd(fit_start), t0, mcut=mcut)
+            f = fit(data, model, n_random=n_random, seed=seed, start=state["params"])
+            b = b_value_mle(pd.Series(data["m"][data["target"]]), mc)[0]
+            state.update(quarter=quarter, params=f["params"], b=b)
+            log["fits"].append({"week": week, "events": len(data["target"]), "nll": f["nll"], "b": b, **f["params"]})
+        out = weekly_forecast(state["params"], model, events[events["mjd"] < t0], uplift[uplift["mjd"] < t0], t0,
+                              mcut=mcut, b=state["b"], n_sims=n_sims, seed=seed)
+        log["weeks"].append({"week": week, **out})
+        return out["expected"]
+
+    forecast.__name__ = f"physics_{model}"
+    forecast.log = log
+    return forecast
+
+
+def check_no_lookahead(make_forecaster, events: pd.DataFrame, uplift: pd.DataFrame, weeks) -> pd.DataFrame:
+    """For each week: the forecast of a fresh forecaster given all the data, and of one given
+    only the data from before the week. Identical values mean nothing later was used.
+    `make_forecaster(events, uplift)` returns a walk_forward forecaster."""
+    rows = []
+    for week in pd.DatetimeIndex(weeks):
+        t0 = to_mjd(week)
+        current = pd.Series(dtype=float, name=week)
+        full = make_forecaster(events, uplift)(None, current)
+        cut = make_forecaster(events[events["mjd"] < t0], uplift[uplift["mjd"] < t0])(None, current)
+        rows.append({"week": week, "all data": full, "data before the week": cut, "identical": full == cut})
+    return pd.DataFrame(rows).set_index("week")
+
 # ---- Simulation ----
 
 def _omori_delays(rng, c, p, start, end):
@@ -232,8 +374,8 @@ def _omori_delays(rng, c, p, start, end):
 
 def simulate_etas(params: dict, t_start: float, t_end: float, b: float, rng: np.random.Generator,
                   background=None, history: pd.DataFrame | None = None, mmax: float = 5.0,
-                  tmax: float = TMAX_TRIGGER) -> pd.DataFrame:
-    """Simulate events with m >= MCUT in (t_start, t_end], generation by generation.
+                  tmax: float = TMAX_TRIGGER, mcut: float = MCUT) -> pd.DataFrame:
+    """Simulate events with m >= mcut in (t_start, t_end], generation by generation.
 
     background: (grid_t, rate) with the rate (events/day) constant between grid points;
     None = the constant params["mu"]. history: earlier events (mjd, m) that can still trigger.
@@ -251,7 +393,7 @@ def simulate_etas(params: dict, t_start: float, t_end: float, b: float, rng: np.
     def magnitudes(n):
         # Inverse CDF of the exponential (Gutenberg-Richter) distribution truncated at mmax.
         beta = b * np.log(10)
-        return MCUT - np.log(1 - rng.uniform(size=n) * (1 - np.exp(-beta * (mmax - MCUT)))) / beta
+        return mcut - np.log(1 - rng.uniform(size=n) * (1 - np.exp(-beta * (mmax - mcut)))) / beta
 
     out_t, out_m = [times], [magnitudes(n_background)]
     parents_t, parents_m = out_t[0], out_m[0]
@@ -263,7 +405,7 @@ def simulate_etas(params: dict, t_start: float, t_end: float, b: float, rng: np.
     while len(parents_t):
         start = np.clip(t_start - parents_t, 0.0, None)  # history: only aftershocks after t_start
         end = np.minimum(t_end - parents_t, tmax)
-        productivity = K * 10.0 ** (alpha * (parents_m - MCUT))
+        productivity = K * 10.0 ** (alpha * (parents_m - mcut))
         if p == 1:
             expected = productivity * np.log((c + end) / (c + start))
         else:

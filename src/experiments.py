@@ -159,3 +159,37 @@ def run(table: pd.DataFrame, s: Setting, start: str, end: str,
                 columns[name].to_frame().to_parquet(path)
         out[kind] = pd.DataFrame(columns)
     return out
+
+
+# ---- Physics baselines (Part 2): ETAS, rate-and-state, and the hybrid ----
+
+PHYSICS_MODELS = {"etas": "physics_etas", "rs": "physics_rs", "rs_etas": "physics_rs_etas"}
+PHYSICS_SIMS = 2000  # simulations per week for the expected count of ETAS and the hybrid
+
+
+def run_physics(table: pd.DataFrame, events: pd.DataFrame, uplift: pd.DataFrame, start: str, end: str,
+                n_sims: int = PHYSICS_SIMS) -> dict[str, pd.DataFrame]:
+    """Walk the physics forecasters forward over [start, end] (one-week horizon), with caching.
+
+    events and uplift are src.physics tables (physics_events, uplift_series). Returns
+    {"counts": one column per model, "fits": parameters at every refit, "weeks": each week's
+    background / triggered / no-cascade / expected count}.
+    """
+    from src.physics import make_physics_forecaster  # here, so Part 1 runs don't need it
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    fp = _fingerprint(table)[:5] + _fingerprint(events)[:5] + _fingerprint(uplift)[:5]
+    counts, fits, weeks = {}, [], []
+    for model, name in PHYSICS_MODELS.items():
+        stem = CACHE_DIR / f"physics__{name}__{n_sims}__{start}__{end}__{fp}"
+        paths = {k: stem.with_name(f"{stem.name}__{k}.parquet") for k in ["counts", "fits", "weeks"]}
+        if not all(p.exists() for p in paths.values()):
+            forecaster = make_physics_forecaster(model, events, uplift, n_sims=n_sims)
+            walk_forward(table, forecaster, start, end).rename(name).to_frame().to_parquet(paths["counts"])
+            pd.DataFrame(forecaster.log["fits"]).to_parquet(paths["fits"])
+            pd.DataFrame(forecaster.log["weeks"]).to_parquet(paths["weeks"])
+        counts[name] = pd.read_parquet(paths["counts"])[name]
+        fits.append(pd.read_parquet(paths["fits"]).assign(model=model))
+        weeks.append(pd.read_parquet(paths["weeks"]).assign(model=model))
+    return {"counts": pd.DataFrame(counts), "fits": pd.concat(fits, ignore_index=True),
+            "weeks": pd.concat(weeks, ignore_index=True)}
