@@ -25,7 +25,8 @@ This project:
 
 1. reproduces that model in open code;
 2. builds forecasting models that use the uplift at **many GPS stations** (the main station
-   RITE, and combined rates from 11 others), together with past earthquakes;
+   RITE, and combined rates from 10 others: 6 near the centre of uplift and 4 far from it),
+   together with past earthquakes;
 3. tests honestly whether the GPS information improves the forecasts.
 
 ## What the data show
@@ -80,13 +81,13 @@ and daily GPS positions from 21 stations (2000–2025), all public (see [Credits
 | Forecast | Best model | Effect of adding GPS |
 |---|---|---|
 | Earthquakes next week | Regression on recent earthquake counts: about 2.4% better than the simple benchmark (a real, statistically significant gain) | +0.2% worse (interval −0.8% to +1.1%): **no effect** |
-| Chance of a magnitude ≥ 3 next week | Recent earthquake rate, allowing for clustering in swarms: 3–5% better than the recent frequency of such weeks | +1.2% worse (interval +0.3% to +2.6%): **slightly harmful** |
+| Chance of a magnitude ≥ 3 next week | Recent earthquake rate, allowing for clustering in swarms: 3–5% better than the recent frequency of such weeks, but **not significant** on the main score (only one of the two scores, over 2020–2025, shows a significant gain) | +1.2% worse (interval +0.3% to +2.6%): **slightly harmful** |
 
-The chart below shows the effect of adding GPS in the main setup and in six variations
-(different training periods, a 4-week forecast instead of 1 week, a lower magnitude
-threshold). Points left of the line would mean GPS helps; the bars show 95% intervals.
+The chart below shows the effect of adding GPS in the main setup and in the variations that
+change each model (different training periods, a 4-week forecast instead of 1 week, a lower
+magnitude threshold). Points left of the line would mean GPS helps; the bars show 95% intervals.
 
-![Effect of adding GPS inputs on forecast quality, in seven setups](reports/figures/gps_effect_sensitivity.png)
+![Effect of adding GPS inputs on forecast quality, in the main setup and its variations](reports/figures/gps_effect_sensitivity.png)
 
 **In every setup, GPS adds nothing measurable.** The tests were sensitive enough to detect
 gains of about 1–3%, the size of the real gains the models do make from earthquake data, so
