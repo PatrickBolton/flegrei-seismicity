@@ -10,14 +10,26 @@ It forecasts rates and probabilities, not individual earthquakes, which cannot b
 It is an exploratory project in machine learning, built on public data, with the code included
 so the results can be checked and extended.
 
-**Short answer:** past earthquakes are the best guide to next week's earthquakes. Adding GPS
-uplift, whether from the main station or combined over many stations, made no measurable
-difference to the forecasts. A simple regression on recent earthquake counts also forecasts at
-least as well as two physics-based models of the unrest, including a 2026 model in which the
-uplift drives the earthquake rate, and letting the uplift drive that physics model didn't
-measurably improve its week-ahead forecasts either.
+**Short answer:**
 
-**Disclaimer:** this is an informal research exercise conducted using Claude Code, not a hazard forecast. For official information about Campi Flegrei, see the [INGV Vesuvius Observatory (INGV-OV)](https://www.ov.ingv.it/) and the Italian [Civil Protection Department](https://www.protezionecivile.gov.it/).
+- **GPS uplift adds no measurable skill a week ahead,** whether it is an input to the
+  machine-learning models or drives the background rate of a physics model.
+- **A simple regression on recent earthquake counts matches or beats the physics models** (ETAS,
+  and the uplift-driven hybrid of Hainzl et al. 2026) when each week is forecast from earlier
+  data only. It is significantly better than ETAS over 2020–2025.
+- **The hybrid's large advantage in hindsight disappears when forecasting.** Fitted to the
+  authors' data for 2005 to early 2025 all at once, it explains the seismicity far better than ETAS
+  (a difference in AIC of 155). Forecasting week by week, the two are within noise of each
+  other, because the physics forecast is 97–98% predictable from the recent earthquake counts.
+
+![How much better than a simple benchmark each model forecasts next week's number of earthquakes](reports/figures/model_comparison.png)
+
+*Each model against a simple benchmark (next week like the average of the last four weeks),
+forecasting each of the 312 weeks of 2020–2025 from earlier data only (blue: the whole period;
+orange: 2024–2025 alone). Points right of the line are better than the benchmark; the bars are
+95% intervals.*
+
+**Disclaimer:** this is an informal research exercise, not a hazard forecast. For official information about Campi Flegrei, see the [INGV Vesuvius Observatory (INGV-OV)](https://www.ov.ingv.it/) and the Italian [Civil Protection Department](https://www.protezionecivile.gov.it/).
 
 ## The question, and where it comes from
 
@@ -40,23 +52,20 @@ This project:
 
 - **Godano et al. (2025)**, the starting point above: the cumulative number of earthquakes as a
   function of the uplift at one GPS station.
-- **Petrillo & Taroni (2025)** extend ETAS, the standard statistical model of earthquakes
-  triggering further earthquakes, with a background rate driven by the strain rate measured by
-  GNSS (GPS), and find that it fits 2013–2024 better (a lower AIC).
-- **Hainzl, Dahm & Tramelli (2026)** combine a rate-and-state model, in which the uplift since
-  1905 loads faults, with ETAS. The combined model reproduces both the long-term trend and the
-  short-term clustering, and gives weekly to monthly forecasts in a pseudo-prospective test.
-  Their code and data are public; this project reuses them and reproduces their fitted
-  parameters.
+- **Petrillo & Taroni (2025)** extend ETAS, the standard model of earthquakes triggering further
+  earthquakes, with a background rate driven by the strain rate measured by GNSS (GPS), and find
+  a better fit for 2013–2024 (a lower AIC).
+- **Hainzl, Dahm & Tramelli (2026)** combine ETAS with a rate-and-state model in which the uplift
+  since 1905 loads faults, and test weekly to monthly forecasts pseudo-prospectively. Their code
+  and data are public; this project reuses them.
 - **Iaccarino et al. (2025)** relate deformation rates and seismic moment to the magnitudes of
   the larger earthquakes in 20 sequences from 2015 to 2024.
-- **Tan et al. (2025)** used machine learning on the continuous seismic records of 2022–2025 to
-  expand the catalogue from about 12,000 to more than 54,000 earthquakes. This project uses the
-  standard catalogue.
+- **Tan et al. (2025)** used machine learning to expand the 2022–2025 catalogue from about
+  12,000 to more than 54,000 earthquakes. This project uses the standard catalogue.
 
-What this project adds: an out-of-sample comparison, week by week on the same 312 weeks and with
-the same scores, of machine-learning and physics-based forecasts, with and without the uplift,
-in open code.
+What this project adds: an out-of-sample, week-by-week comparison of machine-learning and
+physics-based forecasts, with and without the uplift, on the same 312 weeks and scores, in open
+code.
 
 ## What the data show
 
@@ -65,89 +74,74 @@ and daily GPS positions from 21 stations (2000–2025), all public (see [Credits
 
 ![Map of located earthquakes with magnitude 0.6 or more, and the 21 GPS stations](reports/figures/map_events_stations.png)
 
-- **The earthquakes are tightly clustered** around the Solfatara crater, under Pozzuoli and its
-  gulf, mostly 0.5–3.5 km deep. The ground rises most at station RITE on the Pozzuoli
-  waterfront, and much less with distance.
-- **Small earthquakes are not always recorded,** especially before the seismic network grew in
-  the 2010s. To compare years fairly, the forecasts count only events of magnitude 0.6 or more,
-  which the network has recorded reliably since 2005 (6,161 events).
-- **Both uplift and earthquakes have accelerated.** The uplift rate rose from a few cm a year
-  before 2011 to 20–30 cm a year in pulses since 2023; the number of earthquakes doubled
-  roughly every 1.5 years from 2018, with large swarms on top (600 events in February 2025).
+- **The earthquakes are tightly clustered** around the Solfatara crater, mostly 0.5–3.5 km deep.
+  The ground rises most at station RITE on the Pozzuoli waterfront.
+- **The forecasts count earthquakes of magnitude 0.6 or more** (6,161 events), which the
+  network has recorded reliably since 2005; smaller ones were often missed before it grew.
+- **Both uplift and earthquakes have accelerated:** the uplift from a few cm a year before 2011
+  to 20–30 cm a year in pulses since 2023, the earthquakes doubling roughly every 1.5 years
+  from 2018, with swarms on top (600 events in February 2025).
 - **The 2025 study's relationship holds:** since 2012 the cumulative number of earthquakes has
-  grown tenfold for every 73 cm of uplift (below). The same uplift now produces far more
-  earthquakes than ten years ago.
+  grown tenfold for every 73 cm of uplift (below). Week by week, though, bursts of uplift and
+  bursts of earthquakes happen together: the uplift doesn't clearly lead.
 
 ![Cumulative number of earthquakes against the uplift at station RITE](reports/figures/cumulative_count_vs_uplift.png)
 
-- **Week by week, the link is weak and simultaneous.** Bursts of uplift and bursts of
-  earthquakes happen in the same weeks; the uplift doesn't clearly lead. That already hinted
-  that GPS might not help much with forecasting next week.
-
 ## Method
 
-- **What is forecast:** each week, (1) the number of earthquakes of magnitude 0.6 or more next
-  week, and (2) the probability of at least one earthquake of magnitude 3 or more.
-- **How forecasts are tested:** each of the 312 weeks from 2020 to 2025 is forecast using only
-  data from before that week, exactly as a forecaster would have had to, and the forecast is
-  then compared with what happened. Results are also given for 2024–2025 alone, when the level
-  of activity changed least.
-- **What is compared:**
-  - simple benchmarks (next week like the last four weeks; the recent frequency of larger
-    events);
-  - the 2025 study's model, turned into a weekly forecast;
-  - statistical and machine-learning models (Poisson regression and gradient-boosted trees,
-    LightGBM) using 19 inputs: recent earthquake counts, and uplift and uplift rates from the GPS
-    stations;
-  - physics-based models: ETAS (earthquakes triggering earthquakes), a rate-and-state model
-    driven by the uplift since 1905, and the hybrid of the two by Hainzl et al. (2026). They are
-    refitted every three months on earlier data only, and each week's forecast is the average
-    of 2,000 simulations of that week;
-  - the regression and LightGBM models given a physics forecast as an extra input.
-- **The key tests:** each machine-learning model is trained twice, with and without the GPS
-  inputs, and ETAS is compared with the hybrid, which adds the uplift. The difference in
-  forecast quality is what the uplift adds.
-- **Scoring** uses standard measures of forecast quality that reward forecasts for being both
-  accurate and honest about their uncertainty, with 95% uncertainty intervals for every
-  comparison, so that chance differences aren't mistaken for real ones.
+- **What is forecast:** each week, the number of earthquakes of magnitude 0.6 or more, and the
+  probability of at least one of magnitude 3 or more.
+- **How forecasts are tested:** each of the 312 weeks of 2020–2025 is forecast from earlier data
+  only, then compared with what happened; also for 2024–2025 alone, when activity changed least.
+- **What is compared:** simple benchmarks; the 2025 study's model; Poisson regression and
+  gradient-boosted trees (LightGBM) on recent earthquake counts, with and without GPS inputs;
+  ETAS, a rate-and-state model driven by the uplift, and their hybrid (Hainzl et al. 2026),
+  refitted every three months, each week's forecast the mean of 2,000 simulations; and the
+  regression given a physics forecast as an extra input.
+- **Scoring** rewards forecasts for being both accurate and honest about their uncertainty, with
+  95% intervals on every comparison, so that chance differences aren't mistaken for real ones.
 
 ## Results
 
-### Does GPS help the machine-learning models?
+### GPS in the machine-learning models
 
-| Forecast | Best model | Effect of adding GPS |
-|---|---|---|
-| Earthquakes next week | Regression on recent earthquake counts: about 2.4% better than the simple benchmark (a real, statistically significant gain) | +0.2% worse (interval −0.8% to +1.1%): **no effect** |
-| Chance of a magnitude ≥ 3 next week | Recent earthquake rate, allowing for clustering in swarms: 3–5% better than the recent frequency of such weeks, but **not significant** on the main score (only one of the two scores, over 2020–2025, shows a significant gain) | +1.2% worse (interval +0.3% to +2.6%): **slightly harmful** |
-
-The chart below shows the effect of adding GPS in the main setup and in the variations that
-change each model (different training periods, a 4-week forecast instead of 1 week, a lower
-magnitude threshold). Points left of the line would mean GPS helps; the bars show 95% intervals.
-
-![Effect of adding GPS inputs on forecast quality, in the main setup and its variations](reports/figures/gps_effect_sensitivity.png)
-
-**In every setup, GPS adds nothing measurable.** The tests were sensitive enough to detect
-gains of about 1–3%, the size of the real gains the models do make from earthquake data, so
-this is not just a lack of data.
+The best machine-learning model is a regression on recent earthquake counts: 2.4% better than
+the simple benchmark, a statistically significant gain. Adding the GPS inputs changed it by
++0.2% (interval −0.8% to +1.1%), no measurable effect, and made the forecast of a magnitude ≥ 3
+earthquake slightly worse (+1.2%, interval +0.3% to +2.6%). The same holds in six variations of
+the setup (other training periods, a 4-week horizon, a lower magnitude threshold), and the tests
+could detect gains of about 1–3%, the size of the real gains the models make from earthquake
+data.
 
 **Why:** the slow part of the uplift signal (how far the ground has risen) tells the models the
 same thing as the running total of earthquakes, which they already have. The fast part (how
 quickly it is rising this week) is weak, noisy, and happens at the same time as the earthquake
 bursts rather than before them.
 
-### How do they compare with physics-based models?
+<details>
+<summary>Details: results table and the six variations</summary>
 
-Forecasts of next week's number of earthquakes, compared with the simple benchmark (next week
-like the average of the last four). Points right of the line are better than the benchmark; the
-bars show 95% intervals, so a bar that crosses the line means the difference could be chance.
+| Forecast | Best model | Effect of adding GPS |
+|---|---|---|
+| Earthquakes next week | Regression on recent earthquake counts: about 2.4% better than the simple benchmark (a real, statistically significant gain) | +0.2% worse (interval −0.8% to +1.1%): **no effect** |
+| Chance of a magnitude ≥ 3 next week | Recent earthquake rate, allowing for clustering in swarms: 3–5% better than the recent frequency of such weeks, but **not significant** on the main score | +1.2% worse (interval +0.3% to +2.6%): **slightly harmful** |
 
-![How much better than the simple benchmark each model forecasts next week's number of earthquakes](reports/figures/model_comparison.png)
+The chart shows the effect of adding GPS in the main setup and in the variations that change
+each model. Points left of the line would mean GPS helps; the bars show 95% intervals.
+
+![Effect of adding GPS inputs on forecast quality, in the main setup and its variations](reports/figures/gps_effect_sensitivity.png)
+
+</details>
+
+### Physics-based models
+
+The headline chart at the top compares the physics models with the machine-learning ones.
 
 <details>
 <summary>Show the numbers</summary>
 
-Positive means better than the benchmark; 95% intervals in brackets; * marks differences that
-are statistically significant.
+Better than the benchmark, as % of the score; 95% intervals in brackets; * marks differences
+that are statistically significant.
 
 | Model | 2020–2025 | 2024–2025 |
 |---|---|---|
@@ -160,62 +154,65 @@ are statistically significant.
 
 </details>
 
-Week by week, ETAS reacts to swarms much like the regression; the hybrid is smoother and was
-too low in the busy weeks of 2024; rate-and-state alone follows only the slow trend:
-
-![Each model's weekly forecast against the observed number of earthquakes, 2023–2025](reports/figures/weekly_forecasts.png)
-
 - **Machine learning against physics:** the regression on recent earthquakes is at least as
   good as both physics models, and significantly better than ETAS over 2020–2025.
-- **Does the uplift help the physics model?** Not measurably, a week ahead. Fitted to the whole
-  period at once, the hybrid explains the 20 years of seismicity far better than ETAS, as
-  Hainzl et al. and Petrillo & Taroni found. But forecasting each week from earlier data only,
-  the hybrid and ETAS are within noise of each other (0.8% apart over 2020–2025, 0.4% the other
-  way in 2024–2025). The uplift alone (rate-and-state) is worse than the simple benchmark.
-- **Physics forecast as an input:** adding the hybrid's forecast to the regression gives the
+- **Does the uplift help the physics model?** Not measurably, a week ahead: the hybrid and ETAS
+  are within noise of each other (0.8% apart over 2020–2025, 0.4% the other way in 2024–2025).
+  The uplift alone (rate-and-state) is worse than the simple benchmark.
+- **The physics forecast as an input:** adding the hybrid's forecast to the regression gives the
   best model overall, but only 0.3% better than the regression alone over 2020–2025, and no
-  better in 2024–2025. The physics forecast is 97–98% predictable from the recent earthquake
-  counts the regression already has.
+  better in 2024–2025.
 - **Larger earthquakes:** no physics-based or combined forecast beats the best simple forecast
   of the chance of a magnitude ≥ 3 next week.
 
-The same reason as for GPS applies: over 20 years the uplift explains the growth of
-seismicity, but a week ahead that growth is already visible in the recent earthquakes. The
-figure below shows the long view: the three physics models fitted to 2005–2024 at once (Hainzl
-et al.'s data, magnitude 0.45 or more). ETAS has a fixed background rate (dashed) and must
-explain all the growth by earthquakes triggering earthquakes; the hybrid lets the uplift since
-1905 (top) supply a growing background. That is why the hybrid fits the 20 years better, and
-also why it adds little a week ahead, when the recent earthquakes already show the current level.
+Week by week, ETAS reacts to swarms much like the regression; the hybrid is smoother and was too
+low in the busy weeks of 2024; rate-and-state alone follows only the slow trend:
+
+![Each model's weekly forecast against the observed number of earthquakes, 2023–2025](reports/figures/weekly_forecasts.png)
+
+The reason is the same as for GPS. The figure below shows the long view: the three physics
+models fitted to 2005–2024 at once (Hainzl et al.'s data, magnitude 0.45 or more). ETAS has a
+fixed background rate (dashed) and must explain all the growth by earthquakes triggering
+earthquakes; the hybrid lets the uplift since 1905 (top) supply a growing background. That is
+why it fits the 20 years better, as Hainzl et al. and Petrillo & Taroni found, and also why it
+adds little a week ahead, when the recent earthquakes already show the current level.
 
 ![Uplift since 1905, and each physics model's yearly earthquake counts split into background and triggered](reports/figures/physics_models_explained.png)
 
-Other findings:
+<details>
+<summary>Other findings</summary>
 
-- **The 2025 study's model can be reproduced** (we obtain the same parameters, 0.75 and 0.21,
-  against the published 0.76 and 0.2), but its parameters depend on an assumption the data
-  can't check, and it underestimates the earthquakes after May 2024. As a weekly forecast it
-  gets the overall level right but misses swarms.
-- **Hainzl et al.'s model can be reproduced exactly** from their published code and data (same
-  likelihood, same parameters: for example 7.48 against their 7.5 earthquakes a year, and a
-  relaxation time of 34.4 against 34.2 years).
-- **Within-week aftershocks matter.** In the fitted physics models each earthquake
-  triggers on average 0.8–1 further earthquakes, mostly within days, so a weekly physics forecast that ignores
-  the aftershocks of the week's own earthquakes is 2–3 times too low.
-- **Honest uncertainty matters.** Simple forecasts badly understate how variable the weekly
-  numbers are (their "80% ranges" contained the true count only 45% of the time); allowing for
-  swarms fixes this (86–90%).
-- **Larger earthquakes are hard to forecast** beyond how often they have happened recently: the
-  best forecasts pick out the riskier weeks only modestly better than chance.
+- **The 2025 study's model can be reproduced** (parameters 0.75 and 0.21, against the published
+  0.76 and 0.2), but they depend on an assumption the data can't check, and it underestimates
+  the earthquakes after May 2024.
+- **Hainzl et al.'s model was reproduced from their code and data** (same likelihood;
+  parameters within 0.5%, except the poorly constrained Omori c, within 2%).
+- **Within-week aftershocks matter:** in the fitted physics models each earthquake triggers on
+  average 0.8–1 further earthquakes, mostly within days, so a weekly physics forecast that ignores the week's own
+  aftershocks is 2–3 times too low.
+- **Honest uncertainty matters:** simple forecasts' "80% ranges" contained the true count only
+  45% of the time; allowing for swarms fixes this (86–90%).
 
-**Limitations:** weekly forecasts up to four weeks ahead only (one week for the physics
-models); the physics models are fitted to our catalogue at magnitude 0.6 rather than the
-published 0.45, and their fits are poorly determined before 2022, when there were few
-earthquakes; the catalogue's magnitudes are
-duration magnitudes, which can differ by a few tenths from other magnitude scales; only 43 test
-weeks contained an earthquake of magnitude 3 or more, so those results are uncertain; and the
-GPS data end in December 2025. Uplift may still matter for longer horizons (months to years),
-for other questions such as how large a swarm can grow, or with other deformation data such as
-satellite radar (InSAR).
+</details>
+
+### Limitations
+
+Forecasts were tested up to four weeks ahead only (one week for the physics models). The
+physics models are fitted to our catalogue at magnitude 0.6 rather than the published 0.45, and
+their fits are poorly determined before 2022, when there were few earthquakes. The catalogue's
+magnitudes are duration magnitudes, which can differ by a few tenths from other scales; only 43
+test weeks contained an earthquake of magnitude 3 or more, so those results are uncertain; and
+the GPS data end in December 2025. Uplift may still matter for longer horizons (months to
+years), for other questions such as how large a swarm can grow, or with other deformation data
+such as satellite radar (InSAR).
+
+Neural point-process models were not tried. In a recent benchmark on California catalogues with
+18,000–128,000 training earthquakes (EarthquakeNPP; Stockman, Lawson & Werner 2024), none of the
+five tested outperformed ETAS, and they work from the catalogue alone, without the magnitudes
+ETAS uses. Here even LightGBM loses to the regression, and the physics forecast adds almost
+nothing beyond recent counts, so the limit seems to be the information in the data rather than
+model capacity. A larger catalogue, such as that of Tan et al. (2025), would be the place to try
+them.
 
 ## Notebooks
 
@@ -224,13 +221,13 @@ order:
 
 | Notebook | Contents |
 |---|---|
-| [`01_completeness`](notebooks/01_completeness.ipynb) | Which earthquakes are reliably recorded (magnitude of completeness), and the Gutenberg–Richter b-value over time |
-| [`02_explore`](notebooks/02_explore.ipynb) | Exploration: earthquake rate, uplift, their relationship, larger events, map |
-| [`03_baselines`](notebooks/03_baselines.ipynb) | Simple benchmarks, and the 2025 study's model reproduced and turned into a forecast |
-| [`04_models`](notebooks/04_models.ipynb) | Inputs, regression and LightGBM models with and without GPS, larger events, explanations of the models (SHAP) |
-| [`05_evaluation`](notebooks/05_evaluation.ipynb) | Full evaluation: uncertainty of forecasts, detectable effects, and the six variations |
-| [`06_physics_baselines`](notebooks/06_physics_baselines.ipynb) | ETAS, rate-and-state and the hybrid of Hainzl et al.: implementation checked against the authors' code, then weekly forecasts compared with the models above |
-| [`07_ml_vs_physics`](notebooks/07_ml_vs_physics.ipynb) | The regression and LightGBM models given the physics forecast as an input or an offset |
+| [`01_completeness`](notebooks/01_completeness.ipynb) | Which earthquakes are reliably recorded; the b-value over time |
+| [`02_explore`](notebooks/02_explore.ipynb) | Earthquake rate, uplift and their relationship; larger events; map |
+| [`03_baselines`](notebooks/03_baselines.ipynb) | Simple benchmarks; the 2025 study's model reproduced |
+| [`04_models`](notebooks/04_models.ipynb) | Regression and LightGBM with and without GPS; explanations (SHAP) |
+| [`05_evaluation`](notebooks/05_evaluation.ipynb) | Forecast uncertainty, detectable effects, six variations |
+| [`06_physics_baselines`](notebooks/06_physics_baselines.ipynb) | ETAS, rate-and-state and the hybrid: checked against the authors' code, then weekly forecasts |
+| [`07_ml_vs_physics`](notebooks/07_ml_vs_physics.ipynb) | The physics forecast as an input to the machine-learning models |
 
 ## Reproducing the results
 
@@ -249,38 +246,30 @@ needs OpenMP (`brew install libomp`).
 
 ### Data
 
-Raw data lives in `data/raw/` and is not committed. To download it (about 40 MB):
+Raw data (about 40 MB) lives in `data/raw/` and is not committed. Download it, then build the
+cleaned tables in `data/processed/`:
 
 ```bash
 python scripts/download_data.py
-```
-
-This fetches:
-
-| Folder in `data/raw/` | Contents |
-|---|---|
-| `catalogue/` | INGV-OV GOSSIP earthquake catalogue for Campi Flegrei, one CSV per year from 2005 |
-| `gps_21_stations/` | Daily East/North/Up GPS displacements for 21 stations, 2000–2025 |
-| `gps_rite/` | Daily and weekly vertical GPS displacement at station RITE, 2000–2024 |
-| `hainzl/` | Code and data of Hainzl, Dahm & Tramelli (2026): their catalogue, an uplift series since 1905 (levelling joined to GPS), fitted parameters and forecasts. Used for the physics baselines |
-| `osm/` | Coastline, lakes and place names from OpenStreetMap, for maps |
-
-Each folder gets a `SOURCES.json` with every file's URL, download time (UTC) and SHA-256
-checksum. The Zenodo files (GPS and Hainzl et al.) are also checked against the MD5 checksums published by Zenodo. The
-catalogue is updated continuously, so a later download will contain more (and revised) events.
-
-GPS station coordinates are in `data/reference/gps_stations.csv` (committed; see the README
-there). To build the cleaned tables in `data/processed/` used by the notebooks:
-
-```bash
 python scripts/process_data.py
 ```
 
-Then run the notebooks in order (`01_completeness` … `07_ml_vs_physics`). Notebooks 03–05 run
-hundreds of weekly model fits; `05_evaluation` caches its forecasts in
-`data/processed/forecasts/` (git-ignored), as do `06` and `07` (the physics forecasts take
-about 15 minutes the first time). Delete that folder after changing model code, to
-recompute them.
+| Folder in `data/raw/` | Contents |
+|---|---|
+| `catalogue/` | INGV-OV GOSSIP earthquake catalogue, one CSV per year from 2005 |
+| `gps_21_stations/` | Daily GPS positions of 21 stations, 2000–2025 |
+| `gps_rite/` | Daily and weekly vertical GPS positions at station RITE, 2000–2024 |
+| `hainzl/` | Code and data of Hainzl, Dahm & Tramelli (2026), including the uplift since 1905 |
+| `osm/` | Coastline, lakes and place names from OpenStreetMap, for maps |
+
+Each folder gets a `SOURCES.json` recording every file's URL, download time and checksum (Zenodo
+files are also checked against Zenodo's). The catalogue is updated continuously, so a later
+download will contain more events. GPS station coordinates are in
+`data/reference/gps_stations.csv`.
+
+Then run the notebooks in order. They cache their forecasts in `data/processed/forecasts/`
+(the physics forecasts take about 15 minutes the first time); delete that folder after changing
+model code.
 
 ## References
 
@@ -299,6 +288,8 @@ recompute them.
 - Tan, X., Tramelli, A., Gammaldi, S., Beroza, G. C., Ellsworth, W. L., & Marzocchi, W. (2025).
   A clearer view of the current phase of unrest at Campi Flegrei caldera. *Science*, 390,
   70–75. https://doi.org/10.1126/science.adw9038
+- Stockman, S., Lawson, D., & Werner, M. (2024). EarthquakeNPP: A benchmark for earthquake
+  forecasting with neural point processes. arXiv:2410.08226. https://arxiv.org/abs/2410.08226
 
 
 ## Credits
@@ -327,5 +318,12 @@ The earthquake and GPS data, and Hainzl et al.'s code and data, are published un
 
 ## Licence
 
-The code is released under the [MIT licence](LICENSE). The data keep their own licences, listed
-above.
+The code is released under the [MIT licence](LICENSE). `src/physics.py` is adapted from
+Hainzl (2026), Zenodo [doi:10.5281/zenodo.18413119](https://doi.org/10.5281/zenodo.18413119),
+which is under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the attribution is
+kept in the file's header. The data keep their own licences, listed above.
+
+## How this was built
+
+Built with Claude Code (Anthropic) as a learning project in machine learning. Patrick Bolton
+directed the work and reviewed every step.
