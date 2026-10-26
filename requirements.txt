@@ -11,6 +11,7 @@ matplotlib==3.11.2
 # Modelling
 scikit-learn==1.9.1
 statsmodels==0.15.0
+scipy==1.18.1        # fitting the paper's model and the physics models
 lightgbm==4.7.0
 shap==0.54.1
 
