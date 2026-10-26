@@ -6,7 +6,7 @@ This project asks whether **GPS measurements of that uplift can help forecast ho
 earthquakes will happen in the coming week, and how likely a larger one (magnitude 3 or more)
 is.**
 
-It forecasts *rates and probabilities*, not individual earthquakes, which cannot be predicted.
+It forecasts rates and probabilities, not individual earthquakes, which cannot be predicted.
 It is an exploratory project in machine learning, built on public data, with the code included
 so the results can be checked and extended.
 
@@ -17,7 +17,7 @@ least as well as two physics-based models of the unrest, including a 2026 model 
 uplift drives the earthquake rate, and letting the uplift drive that physics model didn't
 measurably improve its week-ahead forecasts either.
 
-**Disclaimer:** This is a research exercise, not a hazard forecast. For official information about Campi Flegrei, see the [INGV Vesuvius Observatory (INGV-OV)](https://www.ov.ingv.it/) and the Italian [Civil Protection Department](https://www.protezionecivile.gov.it/).
+**Disclaimer:** this is an informal research exercise conducted using Claude Code, not a hazard forecast. For official information about Campi Flegrei, see the [INGV Vesuvius Observatory (INGV-OV)](https://www.ov.ingv.it/) and the Italian [Civil Protection Department](https://www.protezionecivile.gov.it/).
 
 ## The question, and where it comes from
 
@@ -28,12 +28,11 @@ earthquakes trigger further earthquakes.
 
 This project:
 
-1. reproduces that model in open code;
-2. builds forecasting models that use the uplift at **many GPS stations** (the main station
+1. builds forecasting models that use the uplift at **many GPS stations** (the main station
    RITE, and combined rates from 10 others: 6 near the centre of uplift and 4 far from it),
    together with past earthquakes;
-3. tests honestly whether the GPS information improves the forecasts;
-4. compares these models with physics-based forecasts, including the uplift-driven model of
+2. tests honestly whether the GPS information improves the forecasts;
+3. compares these models with physics-based forecasts, including the uplift-driven model of
    Hainzl et al. (2026), and tests whether giving the physics forecast to the machine-learning
    model helps.
 
