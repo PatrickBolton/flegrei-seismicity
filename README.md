@@ -159,8 +159,16 @@ bursts rather than before them.
 ### How do they compare with physics-based models?
 
 Forecasts of next week's number of earthquakes, compared with the simple benchmark (next week
-like the average of the last four). Positive means better than the benchmark; 95% intervals in
-brackets; * marks differences that are statistically significant.
+like the average of the last four). Points right of the line are better than the benchmark; the
+bars show 95% intervals, so a bar that crosses the line means the difference could be chance.
+
+![How much better than the simple benchmark each model forecasts next week's number of earthquakes](reports/figures/model_comparison.png)
+
+<details>
+<summary>Show the numbers</summary>
+
+Positive means better than the benchmark; 95% intervals in brackets; * marks differences that
+are statistically significant.
 
 | Model | 2020–2025 | 2024–2025 |
 |---|---|---|
@@ -170,6 +178,13 @@ brackets; * marks differences that are statistically significant.
 | Regression on recent earthquakes | +2.4% [+0.8, +4.2]* | +2.8% [+0.4, +5.1]* |
 | Same, with GPS inputs | +2.3% [+0.3, +4.4]* | +2.4% [−0.4, +4.8] |
 | Regression on recent earthquakes + the hybrid's forecast | +2.7% [+1.1, +4.5]* | +2.9% [+0.4, +5.2]* |
+
+</details>
+
+Week by week, ETAS reacts to swarms much like the regression; the hybrid is smoother and was
+too low in the busy weeks of 2024; rate-and-state alone follows only the slow trend:
+
+![Each model's weekly forecast against the observed number of earthquakes, 2023–2025](reports/figures/weekly_forecasts.png)
 
 - **Machine learning against physics:** the regression on recent earthquakes is at least as
   good as both physics models, and significantly better than ETAS over 2020–2025.
@@ -186,7 +201,14 @@ brackets; * marks differences that are statistically significant.
   of the chance of a magnitude ≥ 3 next week.
 
 The same reason as for GPS applies: over 20 years the uplift explains the growth of
-seismicity, but a week ahead that growth is already visible in the recent earthquakes.
+seismicity, but a week ahead that growth is already visible in the recent earthquakes. The
+figure below shows the long view: the three physics models fitted to 2005–2024 at once (Hainzl
+et al.'s data, magnitude 0.45 or more). ETAS has a fixed background rate (dashed) and must
+explain all the growth by earthquakes triggering earthquakes; the hybrid lets the uplift since
+1905 (top) supply a growing background. That is why the hybrid fits the 20 years better, and
+also why it adds little a week ahead, when the recent earthquakes already show the current level.
+
+![Uplift since 1905, and each physics model's yearly earthquake counts split into background and triggered](reports/figures/physics_models_explained.png)
 
 Other findings:
 
