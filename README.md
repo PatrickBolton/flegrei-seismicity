@@ -1,4 +1,4 @@
-# Can ground uplift forecast earthquake rates? Machine learning vs. physics-based models
+# Can ground uplift forecast earthquake rates? Data-driven vs. physics-based models
 
 **Campi Flegrei**, the volcanic caldera beneath Pozzuoli near Naples, is in a long period of unrest:
 the ground has risen by about 1.6 m since 2005 and earthquakes have become far more frequent.
@@ -12,8 +12,8 @@ so the results can be checked and extended.
 
 **Short answer:**
 
-- **GPS uplift adds no measurable skill a week ahead,** whether it is an input to the
-  machine-learning models or drives the background rate of a physics model.
+- **Adding GPS uplift doesn’t improve next week’s forecasts,** whether it is an input to the
+  data-driven models or drives the background rate of a physics model.
 - **A simple regression on recent earthquake counts matches or beats the physics models** (ETAS,
   and the uplift-driven hybrid of Hainzl et al. 2026) when each week is forecast from earlier
   data only. It is significantly better than ETAS over 2020–2025.
@@ -45,7 +45,7 @@ This project:
    together with past earthquakes;
 2. tests honestly whether the GPS information improves the forecasts;
 3. compares these models with physics-based forecasts, including the uplift-driven model of
-   Hainzl et al. (2026), and tests whether giving the physics forecast to the machine-learning
+   Hainzl et al. (2026), and tests whether giving the physics forecast to the data-driven
    model helps.
 
 ## Related work
@@ -63,7 +63,7 @@ This project:
 - **Tan et al. (2025)** used machine learning to expand the 2022–2025 catalogue from about
   12,000 to more than 54,000 earthquakes. This project uses the standard catalogue.
 
-What this project adds: an out-of-sample, week-by-week comparison of machine-learning and
+What this project adds: an out-of-sample, week-by-week comparison of data-driven and
 physics-based forecasts, with and without the uplift, on the same 312 weeks and scores, in open
 code.
 
@@ -103,9 +103,9 @@ and daily GPS positions from 21 stations (2000–2025), all public (see [Credits
 
 ## Results
 
-### GPS in the machine-learning models
+### GPS in the data-driven models
 
-The best machine-learning model is a regression on recent earthquake counts: 2.4% better than
+The best data-driven model is a regression on recent earthquake counts: 2.4% better than
 the simple benchmark, a statistically significant gain. Adding the GPS inputs changed it by
 +0.2% (interval −0.8% to +1.1%), no measurable effect, and made the forecast of a magnitude ≥ 3
 earthquake slightly worse (+1.2%, interval +0.3% to +2.6%). The same holds in six variations of
@@ -135,7 +135,7 @@ each model. Points left of the line would mean GPS helps; the bars show 95% inte
 
 ### Physics-based models
 
-The headline chart at the top compares the physics models with the machine-learning ones.
+The headline chart at the top compares the physics models with the data-driven ones.
 
 <details>
 <summary>Show the numbers</summary>
@@ -154,7 +154,7 @@ that are statistically significant.
 
 </details>
 
-- **Machine learning against physics:** the regression on recent earthquakes is at least as
+- **Data driven against physics:** the regression on recent earthquakes is at least as
   good as both physics models, and significantly better than ETAS over 2020–2025.
 - **Does the uplift help the physics model?** Not measurably, a week ahead: the hybrid and ETAS
   are within noise of each other (0.8% apart over 2020–2025, 0.4% the other way in 2024–2025).
@@ -227,7 +227,7 @@ order:
 | [`04_models`](notebooks/04_models.ipynb) | Regression and LightGBM with and without GPS; explanations (SHAP) |
 | [`05_evaluation`](notebooks/05_evaluation.ipynb) | Forecast uncertainty, detectable effects, six variations |
 | [`06_physics_baselines`](notebooks/06_physics_baselines.ipynb) | ETAS, rate-and-state and the hybrid: checked against the authors' code, then weekly forecasts |
-| [`07_ml_vs_physics`](notebooks/07_ml_vs_physics.ipynb) | The physics forecast as an input to the machine-learning models |
+| [`07_ml_vs_physics`](notebooks/07_ml_vs_physics.ipynb) | The physics forecast as an input to the data-driven models |
 
 ## Reproducing the results
 
