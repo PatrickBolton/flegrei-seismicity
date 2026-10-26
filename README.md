@@ -1,6 +1,6 @@
-# Can ground uplift forecast earthquake rates? ML vs. physics-based models
+# Can ground uplift forecast earthquake rates? Machine learning vs. physics-based models
 
-Campi Flegrei, the volcanic caldera beneath Pozzuoli near Naples, is in a long period of unrest:
+**Campi Flegrei**, the volcanic caldera beneath Pozzuoli near Naples, is in a long period of unrest:
 the ground has risen by about 1.6 m since 2005 and earthquakes have become far more frequent.
 This project asks whether **GPS measurements of that uplift can help forecast how many
 earthquakes will happen in the coming week, and how likely a larger one (magnitude 3 or more)
@@ -24,7 +24,7 @@ so the results can be checked and extended.
 
 ![How much better than a simple benchmark each model forecasts next week's number of earthquakes](reports/figures/model_comparison.png)
 
-*Each model against a simple benchmark (next week like the average of the last four weeks),
+*Above: each model against a simple benchmark (next week like the average of the last four weeks),
 forecasting each of the 312 weeks of 2020–2025 from earlier data only (blue: the whole period;
 orange: 2024–2025 alone). Points right of the line are better than the benchmark; the bars are
 95% intervals.*
@@ -119,7 +119,7 @@ quickly it is rising this week) is weak, noisy, and happens at the same time as 
 bursts rather than before them.
 
 <details>
-<summary>Details: results table and the six variations</summary>
+<summary>Details</summary>
 
 | Forecast | Best model | Effect of adding GPS |
 |---|---|---|
@@ -325,5 +325,5 @@ kept in the file's header. The data keep their own licences, listed above.
 
 ## How this was built
 
-Built with Claude Code (Anthropic) as a learning project in machine learning. Patrick Bolton
+Built with Claude Code (Anthropic) as an exploratory project in machine learning. Patrick Bolton
 directed the work and reviewed every step.
