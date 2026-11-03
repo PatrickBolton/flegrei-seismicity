@@ -1,7 +1,9 @@
-# Makes the code in src/ importable from scripts/ and notebooks/ (`from src.gps import ...`).
-# Install once, in editable mode, so code changes take effect without reinstalling:
-#     pip install -e .
-# Dependencies and their pinned versions live in requirements.txt.
+# The project's environment, managed with uv (https://docs.astral.sh/uv/).
+# Set up with:  uv sync
+# This installs Python 3.14, the pinned packages below (and, via uv.lock, the exact versions
+# of everything they depend on), and this project's src/ package in editable mode, so
+# `from src.gps import ...` works from scripts/ and notebooks/ and code changes take effect
+# without reinstalling.
 
 [build-system]
 requires = ["setuptools>=61"]
@@ -12,6 +14,30 @@ name = "flegrei-seismicity"
 version = "0.1.0"
 description = "Can GPS ground uplift at Campi Flegrei forecast earthquake rates?"
 requires-python = ">=3.14"
+dependencies = [
+    # Data handling
+    "numpy==2.5.4",
+    "pandas==3.1.0",
+    "pyarrow==26.0.0",       # parquet files in data/processed/
+    # Plotting
+    "matplotlib==3.11.2",
+    # Modelling
+    "scikit-learn==1.9.1",
+    "statsmodels==0.15.0",
+    "scipy==1.18.1",         # fitting the paper's model and the physics models
+    "lightgbm==4.7.0",
+    "shap==0.54.1",
+    # Data download
+    "requests==2.34.2",
+    # Notebooks
+    "ipykernel==7.4.0",
+    "jupyterlab==4.6.4",
+]
 
 [tool.setuptools]
 packages = ["src"]
+
+[tool.uv]
+# Use a Python installed by uv itself, not one from Anaconda or Homebrew, so the
+# environment doesn't depend on other installations.
+python-preference = "only-managed"

@@ -233,16 +233,25 @@ order:
 
 ### Setup
 
-With conda (recommended):
+With [uv](https://docs.astral.sh/uv/) (recommended):
 
 ```bash
-conda env create -f environment.yml
-conda activate flegrei-seismicity
+uv sync
 ```
 
-Without conda, use Python 3.14, then `pip install -r requirements.txt` and `pip install -e .`
-(the second command makes the project's own code in `src/` importable). On macOS, LightGBM also
-needs OpenMP (`brew install libomp`).
+This creates a virtual environment in `.venv/` with Python 3.14, the exact package versions
+recorded in `uv.lock`, and the project's own code in `src/` (installed in editable mode, so
+notebooks and scripts can import it). Run commands in it with `uv run`, for example
+`uv run jupyter lab`. On macOS, LightGBM also needs OpenMP: `brew install libomp`.
+
+The notebooks use a Jupyter kernel named `flegrei-seismicity`. Register it once:
+
+```bash
+uv run python -m ipykernel install --user --name flegrei-seismicity --display-name "Python (flegrei-seismicity)"
+```
+
+Without uv, use Python 3.14, then `pip install -r requirements.txt` (the same versions as
+`uv.lock`) and `pip install -e .`.
 
 ### Data
 
@@ -250,8 +259,8 @@ Raw data (about 40 MB) lives in `data/raw/` and is not committed. Download it, t
 cleaned tables in `data/processed/`:
 
 ```bash
-python scripts/download_data.py
-python scripts/process_data.py
+uv run python scripts/download_data.py
+uv run python scripts/process_data.py
 ```
 
 | Folder in `data/raw/` | Contents |
