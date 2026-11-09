@@ -242,13 +242,8 @@ uv sync
 This creates a virtual environment in `.venv/` with Python 3.14, the exact package versions
 recorded in `uv.lock`, and the project's own code in `src/` (installed in editable mode, so
 notebooks and scripts can import it). Run commands in it with `uv run`, for example
-`uv run jupyter lab`. On macOS, LightGBM also needs OpenMP: `brew install libomp`.
-
-The notebooks use a Jupyter kernel named `flegrei-seismicity`. Register it once:
-
-```bash
-uv run python -m ipykernel install --user --name flegrei-seismicity --display-name "Python (flegrei-seismicity)"
-```
+`uv run jupyter lab`. The notebooks run on the environment's own Python kernel; in VS Code,
+select the `.venv` interpreter. On macOS, LightGBM also needs OpenMP: `brew install libomp`.
 
 Without uv, use Python 3.14, then `pip install -r requirements.txt` (the same versions as
 `uv.lock`) and `pip install -e .`.
